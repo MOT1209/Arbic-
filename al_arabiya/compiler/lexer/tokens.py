@@ -51,6 +51,11 @@ class TokenType(Enum):
     KW_SUB = "ناقص"
     KW_MUL = "في"
     KW_DIV = "على"
+    KW_FUNC = "دالة"
+    KW_RETURN = "رجّع"
+    KW_BREAK = "اكسر"
+    KW_CONTINUE = "كمل"
+    KW_NULL = "فراغ"
 
     # --- operators ---
     PLUS = "+"
@@ -82,6 +87,8 @@ class TokenType(Enum):
 KEYWORDS: dict[str, TokenType] = {
     member.value: member for member in TokenType if member.name.startswith("KW_")
 }
+#: Accepted spelling variants that map onto an existing keyword.
+KEYWORDS["رجع"] = TokenType.KW_RETURN  # ``رجّع`` without the shadda
 
 
 @dataclass(frozen=True, slots=True)

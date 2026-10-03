@@ -5,10 +5,9 @@ from __future__ import annotations
 from al_arabiya.compiler.diagnostics.diagnostics import Diagnostic, Severity
 from al_arabiya.compiler.diagnostics.errors import ArabiyaRuntimeError, ErrorCode
 from al_arabiya.compiler.lexer.positions import Span
+from al_arabiya.runtime.values import Value
 
 __all__ = ["Environment", "Value"]
-
-Value = int | float | str | bool
 
 
 class Environment:

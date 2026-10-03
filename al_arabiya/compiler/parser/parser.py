@@ -12,13 +12,21 @@ from __future__ import annotations
 from al_arabiya.compiler.ast.nodes import (
     Assignment,
     BinaryExpression,
+    BreakStatement,
+    CallExpression,
+    ContinueStatement,
     Expression,
+    ExpressionStatement,
+    FunctionDeclaration,
     Identifier,
     IfStatement,
     Literal,
+    NullLiteral,
+    Parameter,
     PrintStatement,
     Program,
     RepeatStatement,
+    ReturnStatement,
     Statement,
     UnaryExpression,
     VariableDeclaration,
@@ -248,6 +256,29 @@ class Parser:
         return operator, precedence, count
 
     def _parse_prefix(self) -> Expression:
+        expr = self._parse_atom()
+        while self._check(TokenType.LPAREN):
+            expr = self._finish_call(expr)
+        return expr
+
+    def _finish_call(self, callee: Expression) -> Expression:
+        self._advance()  # consume '('
+        arguments: list[Expression] = []
+        if not self._check(TokenType.RPAREN):
+            arguments.append(self.parse_expression())
+            while self._match(TokenType.COMMA):
+                arguments.append(self.parse_expression())
+        rparen = self._expect(
+            TokenType.RPAREN,
+            ErrorCode.EXPECTED_TOKEN,
+            "قوس الاستدعاء '(' مش متقفل",
+            suggestion="اقفل القوس بـ ')'",
+        )
+        return CallExpression(
+            Span(callee.span.start, rparen.span.end), callee, arguments
+        )
+
+    def _parse_atom(self) -> Expression:
         token = self._advance()
         token_type = token.type
 
@@ -261,6 +292,8 @@ class Parser:
             return Literal(token.span, True)
         if token_type is TokenType.KW_FALSE:
             return Literal(token.span, False)
+        if token_type is TokenType.KW_NULL:
+            return NullLiteral(token.span)
         if token_type is TokenType.IDENTIFIER:
             assert isinstance(token.value, str)
             return Identifier(token.span, token.value)
@@ -313,14 +346,31 @@ class Parser:
             return self._parse_repeat()
         if token_type is TokenType.KW_WHILE:
             return self._parse_while()
+        if token_type is TokenType.KW_FUNC:
+            return self._parse_function()
+        if token_type is TokenType.KW_RETURN:
+            return self._parse_return()
+        if token_type is TokenType.KW_BREAK:
+            return self._parse_break()
+        if token_type is TokenType.KW_CONTINUE:
+            return self._parse_continue()
         if token_type is TokenType.IDENTIFIER and self._peek(1).type is TokenType.ASSIGN:
             return self._parse_assignment()
-        raise self._make_error(
-            token,
-            ErrorCode.UNEXPECTED_TOKEN,
-            f"مش عارف أعمل إيه بـ {token.describe()}",
-            suggestion="الأوامر: اطبع، خلي، لو، كرر، طالما — أو ابدأ السطر باسم متغيّر",
-        )
+        return self._parse_expression_statement(token)
+
+    def _parse_expression_statement(self, first: Token) -> Statement:
+        """A statement that is a function call (other bare expressions error)."""
+        expression = self.parse_expression()
+        if not isinstance(expression, CallExpression):
+            raise self._make_error(
+                first,
+                ErrorCode.UNEXPECTED_TOKEN,
+                f"مش عارف أعمل إيه بـ {first.describe()}",
+                suggestion="الأوامر: اطبع، خلي، لو، كرر، طالما، دالة — أو نادِ دالة",
+            )
+        end = self._prev.span.end
+        self._end_statement()
+        return ExpressionStatement(Span(expression.span.start, end), expression)
 
     def _parse_print(self) -> PrintStatement:
         keyword = self._advance()
@@ -445,3 +495,71 @@ class Parser:
         end = self._prev.span.end
         self._end_statement()
         return WhileStatement(Span(keyword.span.start, end), condition, body)
+
+    def _parse_function(self) -> FunctionDeclaration:
+        keyword = self._advance()
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'دالة' لازم يجي اسم الدالة",
+            suggestion="مثال: دالة اجمع (أ، ب)",
+        )
+        self._expect(
+            TokenType.LPAREN,
+            ErrorCode.EXPECTED_TOKEN,
+            "محتاج '(' بعد اسم الدالة",
+            suggestion="مثال: دالة اجمع (أ، ب)",
+        )
+        parameters: list[Parameter] = []
+        if not self._check(TokenType.RPAREN):
+            parameters.append(self._parse_parameter())
+            while self._match(TokenType.COMMA):
+                parameters.append(self._parse_parameter())
+        self._expect(
+            TokenType.RPAREN,
+            ErrorCode.EXPECTED_TOKEN,
+            "قوس المعاملات مش متقفل",
+            suggestion="اقفل القوس بـ ')'",
+        )
+        self._end_statement()
+        body = self._parse_block({TokenType.KW_END})
+        self._expect_block_end("الدالة لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(name_token.value, str)
+        return FunctionDeclaration(
+            Span(keyword.span.start, end),
+            name_token.value,
+            name_token.span,
+            parameters,
+            body,
+        )
+
+    def _parse_parameter(self) -> Parameter:
+        token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_PARAMETER,
+            "اسم المعامل لازم يكون كلمة",
+            suggestion="مثال: دالة اجمع (أ، ب)",
+        )
+        assert isinstance(token.value, str)
+        return Parameter(token.span, token.value)
+
+    def _parse_return(self) -> ReturnStatement:
+        keyword = self._advance()
+        value: Expression | None = None
+        if not self._check(TokenType.NEWLINE) and not self._at_eof():
+            value = self.parse_expression()
+        end = value.span.end if value is not None else keyword.span.end
+        self._end_statement()
+        return ReturnStatement(Span(keyword.span.start, end), value)
+
+    def _parse_break(self) -> BreakStatement:
+        keyword = self._advance()
+        self._end_statement()
+        return BreakStatement(keyword.span)
+
+    def _parse_continue(self) -> ContinueStatement:
+        keyword = self._advance()
+        self._end_statement()
+        return ContinueStatement(keyword.span)

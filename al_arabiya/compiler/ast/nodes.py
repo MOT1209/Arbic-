@@ -15,13 +15,21 @@ __all__ = [
     "Assignment",
     "ASTNode",
     "BinaryExpression",
+    "BreakStatement",
+    "CallExpression",
+    "ContinueStatement",
     "Expression",
+    "ExpressionStatement",
+    "FunctionDeclaration",
     "Identifier",
     "IfStatement",
     "Literal",
+    "NullLiteral",
+    "Parameter",
     "PrintStatement",
     "Program",
     "RepeatStatement",
+    "ReturnStatement",
     "Statement",
     "UnaryExpression",
     "VariableDeclaration",
@@ -106,6 +114,52 @@ class WhileStatement(Statement):
     body: list[Statement]
 
 
+@dataclass(slots=True)
+class Parameter(ASTNode):
+    """One formal parameter in a function declaration."""
+
+    name: str
+
+
+@dataclass(slots=True)
+class FunctionDeclaration(Statement):
+    """``دالة <name> (<params>) ... خلاص``"""
+
+    name: str
+    name_span: Span
+    parameters: list[Parameter]
+    body: list[Statement]
+
+    @property
+    def params(self) -> list[Parameter]:
+        """Alias used by the runtime function value."""
+        return self.parameters
+
+
+@dataclass(slots=True)
+class ReturnStatement(Statement):
+    """``رجّع <expr>`` (the expression is optional)."""
+
+    value: Expression | None = None
+
+
+@dataclass(slots=True)
+class ExpressionStatement(Statement):
+    """An expression used as a statement (currently a function call)."""
+
+    expression: Expression
+
+
+@dataclass(slots=True)
+class BreakStatement(Statement):
+    """``اكسر`` — stop the innermost loop."""
+
+
+@dataclass(slots=True)
+class ContinueStatement(Statement):
+    """``كمل`` — jump to the next iteration of the innermost loop."""
+
+
 # --------------------------------------------------------------- expressions
 
 
@@ -122,10 +176,23 @@ class Literal(Expression):
 
 
 @dataclass(slots=True)
+class NullLiteral(Expression):
+    """The empty value literal ``فراغ``."""
+
+
+@dataclass(slots=True)
 class Identifier(Expression):
     """A variable reference."""
 
     name: str
+
+
+@dataclass(slots=True)
+class CallExpression(Expression):
+    """``<callee>(<args>)``"""
+
+    callee: Expression
+    arguments: list[Expression]
 
 
 @dataclass(slots=True)

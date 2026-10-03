@@ -15,7 +15,7 @@ from al_arabiya.compiler.diagnostics.errors import DiagnosticError
 from al_arabiya.compiler.frontend import compile_source
 from al_arabiya.compiler.lexer.lexer import Lexer
 from al_arabiya.compiler.lexer.tokens import TokenType
-from al_arabiya.runtime.interpreter.environment import Environment
+from al_arabiya.runtime.builtins import make_global_env
 from al_arabiya.runtime.interpreter.interpreter import Interpreter
 
 __all__ = ["run_repl"]
@@ -55,7 +55,7 @@ def run_repl(
     write("اكتب أوامرك بالعربية. للخروج اكتب: خروج (exit)")
     write("")
 
-    environment = Environment()
+    environment = make_global_env()
     buffer: list[str] = []
     depth = 0
 
