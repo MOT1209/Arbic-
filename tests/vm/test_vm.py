@@ -60,6 +60,27 @@ PARITY_PROGRAMS = [
     'دالة لاشيء ()\n    خلي س = 1\nخلاص\nاطبع لاشيء()',
     'اطبع طول("مرحبا")\nاطبع مطلق(ناقص 9)',
     'اطبع فراغ',
+    # collections
+    'خلي ق = [1، 2، 3]\nاطبع ق\nاطبع ق[0]\nق[1] = 20\nاطبع ق',
+    'اطبع [1، 2][-1]',
+    'خلي م = {"أ": 1، "ب": 2}\nاطبع م["أ"]\nم["ج"] = 3\nاطبع م',
+    'لكل س في [10، 20، 30]\n    اطبع س\nخلاص',
+    'لكل ح في "اب"\n    اطبع ح\nخلاص',
+    'خلي مج = 0\nلكل ن في [1، 2، 3، 4]\n    مج = مج زائد ن\nخلاص\nاطبع مج',
+    'اطبع رتب([3، 1، 2])\nاطبع مجموع([1، 2، 3])\nاطبع مدى(1، 4)',
+    # repeat
+    'كرر 3 مرات\n    اطبع "مرة"\nخلاص',
+    'كرر 5 مرات\n    اطبع "x"\n    اكسر\nخلاص',
+    # exceptions
+    'حاول\n    اطبع 10 على 0\nامسك خطأ\n    اطبع خطأ["الكود"]\nخلاص',
+    'حاول\n    ارم "مشكلة"\nامسك e\n    اطبع e\nخلاص',
+    'حاول\n    اطبع 1\nأخيرا\n    اطبع 2\nخلاص',
+    'حاول\n    ارم 1\nامسك e\n    اطبع 2\nأخيرا\n    اطبع 3\nخلاص',
+    (
+        "حاول\n    حاول\n        ارم 1\n    امسك\n        اطبع \"داخلي\"\n"
+        "    خلاص\nامسك\n    اطبع \"خارجي\"\nخلاص"
+    ),
+    'دالة ض ()\n    ارم "من الدالة"\nخلاص\nحاول\n    ض()\nامسك e\n    اطبع e\nخلاص',
 ]
 
 
@@ -96,20 +117,39 @@ def test_builtin_error():
     assert vm_error("اطبع طول(5)").diagnostic.code == ErrorCode.BUILTIN_ERROR
 
 
+def test_index_out_of_range():
+    assert vm_error("اطبع [1، 2][9]").diagnostic.code == ErrorCode.INDEX_OUT_OF_RANGE
+
+
+def test_key_not_found():
+    assert vm_error('اطبع {"أ": 1}["ب"]').diagnostic.code == ErrorCode.KEY_NOT_FOUND
+
+
+def test_not_iterable():
+    assert vm_error("لكل س في 5\n    اطبع س\nخلاص").diagnostic.code == ErrorCode.NOT_ITERABLE
+
+
+def test_unhashable_key():
+    assert vm_error("اطبع {[1]: 2}").diagnostic.code == ErrorCode.UNHASHABLE_KEY
+
+
+def test_uncaught_throw():
+    assert vm_error('ارم "خطأ"').diagnostic.code == ErrorCode.UNCAUGHT_ERROR
+
+
 # ------------------------------------------------------------- supportability
 
 
 @pytest.mark.parametrize(
     "source,fragment",
     [
-        ("اطبع [1، 2]", "القوائم"),
-        ("اطبع {\"أ\": 1}", "القواميس"),
-        ("كرر 3 مرات\n    اطبع 1\nخلاص", "كرر"),
-        ("لكل س في [1]\n    اطبع س\nخلاص", "لكل"),
-        ("حاول\n    اطبع 1\nأخيرا\n    اطبع 2\nخلاص", "حاول"),
-        ('ارم "x"', "ارم"),
         ('استورد "m"', "استورد"),
         ("دالة ا ()\n    دالة ب ()\n        رجّع 1\n    خلاص\nخلاص", "المتداخلة"),
+        # a رجّع that would jump out across a أخيرا
+        (
+            "دالة ق ()\n    حاول\n        رجّع 1\n    أخيرا\n        اطبع 2\n    خلاص\nخلاص",
+            "أخيرا",
+        ),
     ],
 )
 def test_unsupported_features_are_detected(source: str, fragment: str):
@@ -118,8 +158,20 @@ def test_unsupported_features_are_detected(source: str, fragment: str):
     assert fragment in reason
 
 
-def test_supported_program_has_no_reason():
-    source = "دالة ا (س)\n    رجّع س زائد 1\nخلاص\nاطبع ا(2)"
+@pytest.mark.parametrize(
+    "source",
+    [
+        "دالة ا (س)\n    رجّع س زائد 1\nخلاص\nاطبع ا(2)",
+        "اطبع [1، 2، 3]",
+        'اطبع {"أ": 1}',
+        "لكل س في [1، 2]\n    اطبع س\nخلاص",
+        "كرر 3 مرات\n    اطبع 1\nخلاص",
+        'حاول\n    ارم 1\nامسك e\n    اطبع e\nأخيرا\n    اطبع 2\nخلاص',
+        # break inside a nested loop within a try does not escape the try
+        "حاول\n    كرر 3 مرات\n        اكسر\n    خلاص\nامسك\n    اطبع 1\nخلاص",
+    ],
+)
+def test_supported_programs_have_no_reason(source: str):
     assert unsupported_reason(_program(source)) is None
 
 

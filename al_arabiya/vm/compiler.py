@@ -62,82 +62,83 @@ class UnsupportedFeature(Exception):
 
 
 def unsupported_reason(program: Program) -> str | None:
-    """Return a human message if the VM can't run ``program``, else ``None``."""
-    return _Supportability().visit_block(program.body, in_function=False)
+    """Return a human message if the VM can't run ``program``, else ``None``.
+
+    Only three things fall back to the interpreter: imports, nested functions
+    (true closures over locals), and a ``حاول`` whose ``رجّع``/``اكسر``/``كمل``
+    would jump out across a ``أخيرا`` block.
+    """
+    for statement in program.body:
+        reason = _unsupported(statement, in_function=False)
+        if reason is not None:
+            return reason
+    return None
 
 
-class _Supportability:
-    """Walks the AST looking for the first feature the VM does not support."""
+def _children(node: ASTNode) -> list[ASTNode]:
+    """Direct AST children, including map keys/values (which ``fields`` skips)."""
+    from al_arabiya.compiler.ast.nodes import iter_child_nodes
 
-    _REJECT: dict[type[ASTNode], str] = {
-        RepeatStatement: "حلقة 'كرر'",
-        ForEachStatement: "حلقة 'لكل'",
-        ListLiteral: "القوائم []",
-        MapLiteral: "القواميس {}",
-        IndexExpression: "الفهرسة []",
-        IndexAssignment: "الفهرسة بالكتابة",
-        TryStatement: "'حاول/امسك'",
-        ThrowStatement: "'ارم'",
-        ImportStatement: "'استورد'",
-    }
+    if isinstance(node, MapLiteral):
+        collected: list[ASTNode] = []
+        for key, value in node.entries:
+            collected.append(key)
+            collected.append(value)
+        return collected
+    return iter_child_nodes(node)
 
-    def visit_block(self, body: list[Statement], *, in_function: bool) -> str | None:
-        for statement in body:
-            reason = self.visit(statement, in_function=in_function)
+
+def _unsupported(node: ASTNode, *, in_function: bool) -> str | None:
+    if isinstance(node, ImportStatement):
+        return "'استورد'"
+    if isinstance(node, FunctionDeclaration):
+        if in_function:
+            return "الدوال المتداخلة/closures"
+        for statement in node.body:
+            reason = _unsupported(statement, in_function=True)
             if reason is not None:
                 return reason
         return None
+    if isinstance(node, TryStatement) and _try_has_escaping_jump(node):
+        return "'حاول' مع 'رجّع/اكسر/كمل' بيعدّي 'أخيرا'"
+    for child in _children(node):
+        reason = _unsupported(child, in_function=in_function)
+        if reason is not None:
+            return reason
+    return None
 
-    def visit(self, node: ASTNode, *, in_function: bool) -> str | None:
-        for rejected, label in self._REJECT.items():
-            if isinstance(node, rejected):
-                return label
-        if isinstance(node, FunctionDeclaration):
-            if in_function:
-                return "الدوال المتداخلة/closures"
-            return self.visit_block(node.body, in_function=True)
-        if isinstance(node, IfStatement):
-            return (
-                self.visit(node.condition, in_function=in_function)
-                or self.visit_block(node.then_body, in_function=in_function)
-                or (
-                    self.visit_block(node.else_body, in_function=in_function)
-                    if node.else_body is not None
-                    else None
-                )
-            )
-        if isinstance(node, WhileStatement):
-            return self.visit(node.condition, in_function=in_function) or self.visit_block(
-                node.body, in_function=in_function
-            )
-        if isinstance(node, (PrintStatement, ExpressionStatement)):
-            return self.visit(node.expression, in_function=in_function)
-        if isinstance(node, VariableDeclaration):
-            return self.visit(node.initializer, in_function=in_function)
-        if isinstance(node, Assignment):
-            return self.visit(node.value, in_function=in_function)
-        if isinstance(node, ReturnStatement):
-            return (
-                self.visit(node.value, in_function=in_function)
-                if node.value is not None
-                else None
-            )
-        if isinstance(node, BinaryExpression):
-            return self.visit(node.left, in_function=in_function) or self.visit(
-                node.right, in_function=in_function
-            )
-        if isinstance(node, UnaryExpression):
-            return self.visit(node.operand, in_function=in_function)
-        if isinstance(node, CallExpression):
-            reason = self.visit(node.callee, in_function=in_function)
-            if reason is not None:
-                return reason
-            for argument in node.arguments:
-                reason = self.visit(argument, in_function=in_function)
-                if reason is not None:
-                    return reason
-            return None
-        return None
+
+def _try_has_escaping_jump(node: TryStatement) -> bool:
+    bodies = [node.try_body]
+    if node.catch_body is not None:
+        bodies.append(node.catch_body)
+    return any(_body_escapes(body, loop_depth=0) for body in bodies)
+
+
+def _body_escapes(body: list[Statement], *, loop_depth: int) -> bool:
+    return any(_stmt_escapes(statement, loop_depth=loop_depth) for statement in body)
+
+
+def _stmt_escapes(node: Statement, *, loop_depth: int) -> bool:
+    if isinstance(node, ReturnStatement):
+        return True
+    if isinstance(node, (BreakStatement, ContinueStatement)):
+        return loop_depth == 0
+    if isinstance(node, IfStatement):
+        return _body_escapes(node.then_body, loop_depth=loop_depth) or (
+            node.else_body is not None
+            and _body_escapes(node.else_body, loop_depth=loop_depth)
+        )
+    if isinstance(node, (WhileStatement, RepeatStatement, ForEachStatement)):
+        return _body_escapes(node.body, loop_depth=loop_depth + 1)
+    if isinstance(node, TryStatement):
+        inner = [node.try_body]
+        if node.catch_body is not None:
+            inner.append(node.catch_body)
+        if node.finally_body is not None:
+            inner.append(node.finally_body)
+        return any(_body_escapes(b, loop_depth=loop_depth) for b in inner)
+    return False
 
 
 class _FunctionState:
@@ -250,6 +251,20 @@ class BytecodeCompiler:
             self._loop_jump(node, is_break=True)
         elif isinstance(node, ContinueStatement):
             self._loop_jump(node, is_break=False)
+        elif isinstance(node, RepeatStatement):
+            self._repeat(node)
+        elif isinstance(node, ForEachStatement):
+            self._for_each(node)
+        elif isinstance(node, IndexAssignment):
+            self._expression(node.collection)
+            self._expression(node.index)
+            self._expression(node.value)
+            self._emit(Op.INDEX_SET, node.span)
+        elif isinstance(node, ThrowStatement):
+            self._expression(node.value)
+            self._emit(Op.THROW, node.span)
+        elif isinstance(node, TryStatement):
+            self._try(node)
         else:  # pragma: no cover - guarded by unsupported_reason
             raise UnsupportedFeature(type(node).__name__)
 
@@ -279,7 +294,7 @@ class BytecodeCompiler:
 
     def _while(self, node: WhileStatement) -> None:
         loop_start = self._here()
-        self._state.loops.append({"continue": loop_start, "breaks": []})
+        self._state.loops.append({"kind": "while", "continue": loop_start, "breaks": []})
         self._expression(node.condition)
         exit_jump = self._emit_jump(Op.JUMP_IF_FALSE, node.span)
         for statement in node.body:
@@ -287,6 +302,45 @@ class BytecodeCompiler:
         self._emit(Op.JUMP, node.span)
         self._emit_arg(loop_start)
         self._patch(exit_jump)
+        self._end_loop()
+
+    def _repeat(self, node: RepeatStatement) -> None:
+        self._expression(node.count)
+        self._emit(Op.REP_PREP, node.span)
+        loop_start = self._here()
+        self._state.loops.append({"kind": "repeat", "continue": loop_start, "breaks": []})
+        exit_jump = self._emit_jump(Op.REP_NEXT, node.span)
+        for statement in node.body:
+            self._statement(statement)
+        self._emit(Op.JUMP, node.span)
+        self._emit_arg(loop_start)
+        self._patch(exit_jump)
+        self._end_loop()
+
+    def _for_each(self, node: ForEachStatement) -> None:
+        self._expression(node.iterable)
+        self._emit(Op.FOR_PREP, node.span)
+        loop_start = self._here()
+        self._state.loops.append({"kind": "foreach", "continue": loop_start, "breaks": []})
+        exit_jump = self._emit_jump(Op.FOR_NEXT, node.span)
+        self._bind_name(node.variable, node.variable_span)  # store the item FOR_NEXT pushed
+        for statement in node.body:
+            self._statement(statement)
+        self._emit(Op.JUMP, node.span)
+        self._emit_arg(loop_start)
+        self._patch(exit_jump)
+        self._end_loop()
+
+    def _bind_name(self, name: str, span: Span) -> None:
+        if self._state.is_script:
+            self._emit(Op.DEF_GLOBAL, span)
+            self._emit_arg(self._constant(name))
+        else:
+            slot = self._declare_local(name)
+            self._emit(Op.SET_LOCAL, span)
+            self._emit_arg(slot)
+
+    def _end_loop(self) -> None:
         loop = self._state.loops.pop()
         for position in loop["breaks"]:  # type: ignore[attr-defined]
             self._patch(position)
@@ -295,12 +349,60 @@ class BytecodeCompiler:
         if not self._state.loops:
             raise UnsupportedFeature("break/continue خارج حلقة")
         loop = self._state.loops[-1]
+        kind = loop["kind"]
         if is_break:
+            if kind == "foreach":
+                self._emit(Op.FOR_POP, node.span)
+            elif kind == "repeat":
+                self._emit(Op.REP_POP, node.span)
             position = self._emit_jump(Op.JUMP, node.span)
             loop["breaks"].append(position)  # type: ignore[attr-defined]
         else:
             self._emit(Op.JUMP, node.span)
             self._emit_arg(loop["continue"])  # type: ignore[arg-type]
+
+    def _try(self, node: TryStatement) -> None:
+        has_catch = node.catch_body is not None
+        has_finally = node.finally_body is not None
+
+        finally_operand = -1
+        if has_finally:
+            self._emit(Op.SETUP_FINALLY, node.span)
+            finally_operand = self._here()
+            self._emit_arg(0)
+        catch_operand = -1
+        if has_catch:
+            self._emit(Op.SETUP_EXCEPT, node.span)
+            catch_operand = self._here()
+            self._emit_arg(0)
+
+        for statement in node.try_body:
+            self._statement(statement)
+        if has_catch:
+            self._emit(Op.POP_BLOCK, node.span)
+        after_try = self._emit_jump(Op.JUMP, node.span)
+
+        if has_catch:
+            self._patch(catch_operand)
+            # the VM pushed the caught error value on the stack
+            if node.catch_name is not None:
+                self._bind_name(node.catch_name, node.catch_name_span or node.span)
+            else:
+                self._emit(Op.POP, node.span)
+            assert node.catch_body is not None
+            for statement in node.catch_body:
+                self._statement(statement)
+
+        self._patch(after_try)
+
+        if has_finally:
+            self._emit(Op.POP_BLOCK, node.span)
+            self._emit(Op.PUSH_FINALLY_OK, node.span)
+            self._patch(finally_operand)  # exception path jumps straight here
+            assert node.finally_body is not None
+            for statement in node.finally_body:
+                self._statement(statement)
+            self._emit(Op.END_FINALLY, node.span)
 
     def _function(self, node: FunctionDeclaration) -> None:
         function_state = _FunctionState(is_script=False)
@@ -344,6 +446,21 @@ class BytecodeCompiler:
             self._binary(node)
         elif isinstance(node, CallExpression):
             self._call(node)
+        elif isinstance(node, ListLiteral):
+            for element in node.elements:
+                self._expression(element)
+            self._emit(Op.BUILD_LIST, node.span)
+            self._emit_arg(len(node.elements))
+        elif isinstance(node, MapLiteral):
+            for key_node, value_node in node.entries:
+                self._expression(key_node)
+                self._expression(value_node)
+            self._emit(Op.BUILD_MAP, node.span)
+            self._emit_arg(len(node.entries))
+        elif isinstance(node, IndexExpression):
+            self._expression(node.target)
+            self._expression(node.index)
+            self._emit(Op.INDEX_GET, node.span)
         else:  # pragma: no cover - guarded by unsupported_reason
             raise UnsupportedFeature(type(node).__name__)
 

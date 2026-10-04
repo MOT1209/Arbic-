@@ -113,11 +113,39 @@ def test_run_with_vm_backend(tmp_path, capsys):
 
 
 def test_run_vm_falls_back_on_unsupported(tmp_path, capsys):
-    path = write_program(tmp_path, "اطبع [1، 2][0]\n")
+    # nested functions (closures over locals) still run on the interpreter
+    program = (
+        "دالة خارجي ()\n"
+        "    دالة داخلي ()\n"
+        "        رجّع 1\n"
+        "    خلاص\n"
+        "    رجّع داخلي()\n"
+        "خلاص\n"
+        'اطبع خارجي()\n'
+    )
+    path = write_program(tmp_path, program)
     assert main(["run", "--vm", path]) == 0
     captured = capsys.readouterr()
     assert "1" in captured.out
     assert "VM" in captured.err  # a fallback note was printed
+
+
+def test_run_vm_executes_lists_and_exceptions(tmp_path, capsys):
+    program = (
+        "خلي ق = [1، 2، 3]\n"
+        "حاول\n"
+        "    اطبع ق[1]\n"
+        "    ارم \"توقف\"\n"
+        "امسك e\n"
+        "    اطبع e\n"
+        "خلاص\n"
+    )
+    path = write_program(tmp_path, program)
+    assert main(["run", "--vm", path]) == 0
+    captured = capsys.readouterr()
+    assert "2" in captured.out
+    assert "توقف" in captured.out
+    assert "VM" not in captured.err  # ran on the VM, no fallback
 
 
 def test_run_vm_runtime_error(tmp_path, capsys):
@@ -134,7 +162,8 @@ def test_bench_reports_speedup(tmp_path, capsys):
 
 
 def test_bench_unsupported_returns_2(tmp_path, capsys):
-    path = write_program(tmp_path, "اطبع [1][0]\n")
+    # import isn't covered by the VM, so the comparison isn't available
+    path = write_program(tmp_path, 'استورد "لا_يوجد"\n')
     assert main(["bench", path]) == 2
 
 

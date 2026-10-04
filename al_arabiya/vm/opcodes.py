@@ -44,3 +44,27 @@ class Op(IntEnum):
 
     CALL = 26          # operand: argument count
     RETURN = 27
+
+    # --- collections ---
+    BUILD_LIST = 28    # operand: element count   → push list of the top n values
+    BUILD_MAP = 29     # operand: entry count     → push dict from the top 2n values
+    INDEX_GET = 30     # pop index, target        → push target[index]
+    INDEX_SET = 31     # pop value, index, target → target[index] = value
+
+    # --- for-each (iterates list/str/map-keys; state lives on the stack) ---
+    FOR_PREP = 32      # pop iterable → push (items, 0)
+    FOR_NEXT = 33      # operand: exit target; else push next item (to be stored)
+    FOR_POP = 34       # drop (items, index) — used by break
+
+    # --- repeat (كرر) ---
+    REP_PREP = 35      # pop count → push remaining
+    REP_NEXT = 36      # operand: exit target; else decrement remaining
+    REP_POP = 37       # drop remaining — used by break
+
+    # --- exceptions ---
+    SETUP_EXCEPT = 38  # operand: catch target
+    SETUP_FINALLY = 39  # operand: finally target
+    POP_BLOCK = 40     # pop the top exception block
+    THROW = 41         # pop value → raise it
+    PUSH_FINALLY_OK = 42  # push the "normal completion" marker before a finally
+    END_FINALLY = 43   # pop marker; re-raise if it carries an exception
