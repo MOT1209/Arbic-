@@ -34,6 +34,8 @@ from al_arabiya.compiler.ast.nodes import (
     RepeatStatement,
     ReturnStatement,
     Statement,
+    ThrowStatement,
+    TryStatement,
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
@@ -441,6 +443,10 @@ class Parser:
             return self._parse_import()
         if token_type is TokenType.KW_FROM:
             return self._parse_from_import()
+        if token_type is TokenType.KW_TRY:
+            return self._parse_try()
+        if token_type is TokenType.KW_THROW:
+            return self._parse_throw()
         if token_type is TokenType.IDENTIFIER and self._peek(1).type is TokenType.ASSIGN:
             return self._parse_assignment()
         return self._parse_expression_statement(token)
@@ -757,3 +763,56 @@ class Parser:
         keyword = self._advance()
         self._end_statement()
         return ContinueStatement(keyword.span)
+
+    def _parse_throw(self) -> ThrowStatement:
+        keyword = self._advance()
+        value = self.parse_expression()
+        end = self._prev.span.end
+        self._end_statement()
+        return ThrowStatement(Span(keyword.span.start, end), value)
+
+    def _parse_try(self) -> TryStatement:
+        keyword = self._advance()
+        self._end_statement()
+        try_body = self._parse_block(
+            {TokenType.KW_CATCH, TokenType.KW_FINALLY, TokenType.KW_END}
+        )
+
+        catch_name: str | None = None
+        catch_name_span: Span | None = None
+        catch_body: list[Statement] | None = None
+        if self._check(TokenType.KW_CATCH):
+            self._advance()
+            if self._check(TokenType.IDENTIFIER):
+                name_token = self._advance()
+                assert isinstance(name_token.value, str)
+                catch_name = name_token.value
+                catch_name_span = name_token.span
+            self._end_statement()
+            catch_body = self._parse_block({TokenType.KW_FINALLY, TokenType.KW_END})
+
+        finally_body: list[Statement] | None = None
+        if self._check(TokenType.KW_FINALLY):
+            self._advance()
+            self._end_statement()
+            finally_body = self._parse_block({TokenType.KW_END})
+
+        if catch_body is None and finally_body is None:
+            raise self._make_error(
+                self._peek(),
+                ErrorCode.TRY_WITHOUT_HANDLER,
+                "'حاول' لازم يتبعها 'امسك' أو 'أخيرا'",
+                suggestion="ضيف 'امسك' لمعالجة الخطأ أو 'أخيرا' للتنظيف",
+            )
+
+        self._expect_block_end("'حاول' لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        return TryStatement(
+            Span(keyword.span.start, end),
+            try_body,
+            catch_name=catch_name,
+            catch_name_span=catch_name_span,
+            catch_body=catch_body,
+            finally_body=finally_body,
+        )

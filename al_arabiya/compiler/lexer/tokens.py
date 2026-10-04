@@ -59,6 +59,10 @@ class TokenType(Enum):
     KW_FOREACH = "لكل"
     KW_IMPORT = "استورد"
     KW_AS = "باسم"
+    KW_TRY = "حاول"
+    KW_CATCH = "امسك"
+    KW_FINALLY = "أخيرا"
+    KW_THROW = "ارم"
 
     # --- operators ---
     PLUS = "+"
@@ -92,6 +96,8 @@ KEYWORDS: dict[str, TokenType] = {
 }
 #: Accepted spelling variants that map onto an existing keyword.
 KEYWORDS["رجع"] = TokenType.KW_RETURN  # ``رجّع`` without the shadda
+KEYWORDS["ارمي"] = TokenType.KW_THROW  # ``ارم`` with the ya
+KEYWORDS["أخيراً"] = TokenType.KW_FINALLY  # ``أخيرا`` with tanwin
 
 
 @dataclass(frozen=True, slots=True)

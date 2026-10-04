@@ -34,6 +34,8 @@ from al_arabiya.compiler.ast.nodes import (
     Program,
     RepeatStatement,
     ReturnStatement,
+    ThrowStatement,
+    TryStatement,
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
@@ -93,6 +95,15 @@ class _Continue(Exception):  # noqa: N818
         self.span = span
 
 
+class _Raise(Exception):  # noqa: N818
+    """A user-thrown value (``ارم``), catchable by ``حاول/امسك``."""
+
+    def __init__(self, value: Value, span: Span) -> None:
+        super().__init__()
+        self.value = value
+        self.span = span
+
+
 class Interpreter(ASTVisitor):
     """Tree-walking interpreter over the AlArabiya AST."""
 
@@ -126,6 +137,13 @@ class Interpreter(ASTVisitor):
                 "'اكسر'/'كمل' لازم تكون جوّه حلقة",
                 signal.span,
                 "استخدمهم داخل 'طالما' أو 'كرر' بس",
+            ) from None
+        except _Raise as signal:
+            raise self._control_error(
+                ErrorCode.UNCAUGHT_ERROR,
+                f"خطأ مرمي مش متمسك: {format_value(signal.value)}",
+                signal.span,
+                "لفّ الكود بـ 'حاول ... امسك ... خلاص' عشان تمسك الخطأ",
             ) from None
 
     def _eval(self, expression: Expression) -> Value:
@@ -252,6 +270,41 @@ class Interpreter(ASTVisitor):
 
     def visit_continue_statement(self, node: ContinueStatement) -> None:
         raise _Continue(node.span)
+
+    def visit_throw_statement(self, node: ThrowStatement) -> None:
+        raise _Raise(self._eval(node.value), node.span)
+
+    def visit_try_statement(self, node: TryStatement) -> None:
+        try:
+            try:
+                for statement in node.try_body:
+                    self.visit(statement)
+            except (ArabiyaRuntimeError, _Raise) as exc:
+                if node.catch_body is None:
+                    raise
+                if node.catch_name is not None:
+                    self.environment.define(node.catch_name, self._exception_value(exc))
+                for statement in node.catch_body:
+                    self.visit(statement)
+        finally:
+            if node.finally_body is not None:
+                for statement in node.finally_body:
+                    self.visit(statement)
+
+    @staticmethod
+    def _exception_value(exc: ArabiyaRuntimeError | _Raise) -> Value:
+        """The value bound by ``امسك``: thrown values pass through; runtime
+        errors become a map with the message, the code and the suggestion."""
+        if isinstance(exc, _Raise):
+            return exc.value
+        diagnostic = exc.diagnostic
+        error_map: dict[Value, Value] = {
+            "الرسالة": diagnostic.message,
+            "الكود": str(diagnostic.code),
+        }
+        if diagnostic.suggestion is not None:
+            error_map["اقتراح"] = diagnostic.suggestion
+        return error_map
 
     def visit_for_each_statement(self, node: ForEachStatement) -> None:
         iterable = self._eval(node.iterable)

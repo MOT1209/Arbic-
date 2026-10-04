@@ -47,6 +47,7 @@ class ErrorCode(StrEnum):
     EXPECTED_NEWLINE = "E2006"
     EXPECTED_PARAMETER = "E2007"
     INVALID_ASSIGN_TARGET = "E2008"
+    TRY_WITHOUT_HANDLER = "E2009"
 
     # --- warnings (W3xxx) ---
     IMPLICIT_DECLARATION = "W3001"
@@ -69,6 +70,7 @@ class ErrorCode(StrEnum):
     MODULE_NOT_FOUND = "E4015"
     IMPORT_ERROR = "E4016"
     UNHASHABLE_KEY = "E4017"
+    UNCAUGHT_ERROR = "E4018"
 
 
 class AlArabiyaError(Exception):

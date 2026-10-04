@@ -37,6 +37,8 @@ __all__ = [
     "RepeatStatement",
     "ReturnStatement",
     "Statement",
+    "ThrowStatement",
+    "TryStatement",
     "UnaryExpression",
     "VariableDeclaration",
     "WhileStatement",
@@ -193,6 +195,24 @@ class BreakStatement(Statement):
 @dataclass(slots=True)
 class ContinueStatement(Statement):
     """``كمل`` — jump to the next iteration of the innermost loop."""
+
+
+@dataclass(slots=True)
+class ThrowStatement(Statement):
+    """``ارم <expr>`` — raise an error value."""
+
+    value: Expression
+
+
+@dataclass(slots=True)
+class TryStatement(Statement):
+    """``حاول ... امسك [اسم] ... أخيرا ... خلاص`` (catch/finally each optional)."""
+
+    try_body: list[Statement]
+    catch_name: str | None = None
+    catch_name_span: Span | None = None
+    catch_body: list[Statement] | None = None
+    finally_body: list[Statement] | None = None
 
 
 # --------------------------------------------------------------- expressions
