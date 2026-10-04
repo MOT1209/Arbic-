@@ -7,7 +7,16 @@ from dataclasses import dataclass, field
 from al_arabiya.compiler.lexer.positions import Span
 from al_arabiya.runtime.values import Value
 
-__all__ = ["Chunk", "ImportSpec", "VMFunction"]
+__all__ = ["Cell", "Chunk", "Closure", "ImportSpec", "VMFunction"]
+
+
+class Cell:
+    """A boxed, shared variable slot — the storage a closure captures."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Value) -> None:
+        self.value = value
 
 
 @dataclass(slots=True, frozen=True)
@@ -39,9 +48,27 @@ class Chunk:
 
 @dataclass(slots=True)
 class VMFunction:
-    """A compiled function: its name, arity, chunk and local-slot count."""
+    """A compiled function prototype.
+
+    ``upvalues`` describes how to capture each upvalue when a closure of this
+    function is created: ``(is_local, index)`` — ``is_local`` captures the
+    enclosing frame's local cell at ``index``, otherwise the enclosing
+    closure's upvalue at ``index``.  ``captured_slots`` are the local slots
+    that must be boxed in a :class:`Cell` because an inner function captures
+    them.
+    """
 
     name: str
     arity: int
     chunk: Chunk
     local_count: int
+    upvalues: list[tuple[bool, int]] = field(default_factory=list)
+    captured_slots: frozenset[int] = frozenset()
+
+
+@dataclass(slots=True)
+class Closure:
+    """A runtime function value: a prototype plus its captured cells."""
+
+    proto: VMFunction
+    upvalues: list[Cell]

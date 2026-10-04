@@ -28,7 +28,6 @@ from al_arabiya.compiler.ast.nodes import (
     Literal,
     MapLiteral,
     NullLiteral,
-    Parameter,
     PrintStatement,
     Program,
     RepeatStatement,
@@ -41,6 +40,7 @@ from al_arabiya.compiler.ast.nodes import (
     WhileStatement,
 )
 from al_arabiya.compiler.lexer.positions import Span
+from al_arabiya.vm.captures import captured_local_names
 from al_arabiya.vm.chunk import Chunk, ImportSpec, VMFunction
 from al_arabiya.vm.opcodes import Op
 
@@ -64,12 +64,11 @@ class UnsupportedFeature(Exception):
 def unsupported_reason(program: Program) -> str | None:
     """Return a human message if the VM can't run ``program``, else ``None``.
 
-    Two things still fall back to the interpreter: nested functions (true
-    closures over locals), and a ``حاول`` whose ``رجّع``/``اكسر``/``كمل`` would
-    jump out across a ``أخيرا`` block.
+    Only one thing still falls back to the interpreter: a ``حاول`` whose
+    ``رجّع``/``اكسر``/``كمل`` would jump out across a ``أخيرا`` block.
     """
     for statement in program.body:
-        reason = _unsupported(statement, in_function=False)
+        reason = _unsupported(statement)
         if reason is not None:
             return reason
     return None
@@ -88,19 +87,11 @@ def _children(node: ASTNode) -> list[ASTNode]:
     return iter_child_nodes(node)
 
 
-def _unsupported(node: ASTNode, *, in_function: bool) -> str | None:
-    if isinstance(node, FunctionDeclaration):
-        if in_function:
-            return "الدوال المتداخلة/closures"
-        for statement in node.body:
-            reason = _unsupported(statement, in_function=True)
-            if reason is not None:
-                return reason
-        return None
+def _unsupported(node: ASTNode) -> str | None:
     if isinstance(node, TryStatement) and _try_has_escaping_jump(node):
         return "'حاول' مع 'رجّع/اكسر/كمل' بيعدّي 'أخيرا'"
     for child in _children(node):
-        reason = _unsupported(child, in_function=in_function)
+        reason = _unsupported(child)
         if reason is not None:
             return reason
     return None
@@ -140,14 +131,25 @@ def _stmt_escapes(node: Statement, *, loop_depth: int) -> bool:
 
 
 class _FunctionState:
-    """Per-function compilation state (its chunk, locals and loop stack)."""
+    """Per-function compilation state (its chunk, locals, upvalues, loops)."""
 
     def __init__(self, *, is_script: bool) -> None:
         self.chunk = Chunk()
         self.is_script = is_script
         self.locals: list[str] = []
-        # each loop: {"continue": target, "breaks": [patch positions]}
+        # each loop: {"kind": str, "continue": target, "breaks": [positions]}
         self.loops: list[dict[str, object]] = []
+        self.captured: set[str] = set()  # local names an inner function captures
+        self.cell_slots: set[int] = set()  # slots boxed in a Cell
+        self.upvalues: list[tuple[bool, int]] = []  # (is_local, index)
+
+    def add_upvalue(self, is_local: bool, index: int) -> int:
+        descriptor = (is_local, index)
+        for existing, candidate in enumerate(self.upvalues):
+            if candidate == descriptor:
+                return existing
+        self.upvalues.append(descriptor)
+        return len(self.upvalues) - 1
 
 
 class BytecodeCompiler:
@@ -210,7 +212,27 @@ class BytecodeCompiler:
         if existing is not None:
             return existing
         self._state.locals.append(name)
-        return len(self._state.locals) - 1
+        slot = len(self._state.locals) - 1
+        if name in self._state.captured:
+            self._state.cell_slots.add(slot)
+        return slot
+
+    def _resolve_upvalue(self, name: str, state_index: int) -> int | None:
+        """Resolve ``name`` as an upvalue of the function at ``state_index``."""
+        if state_index <= 0:
+            return None
+        enclosing_index = state_index - 1
+        enclosing = self._states[enclosing_index]
+        if enclosing.is_script:
+            return None  # the outer scope is global, not a captured upvalue
+        for slot in range(len(enclosing.locals) - 1, -1, -1):
+            if enclosing.locals[slot] == name:
+                enclosing.cell_slots.add(slot)  # must be boxed to be captured
+                return self._states[state_index].add_upvalue(True, slot)
+        outer = self._resolve_upvalue(name, enclosing_index)
+        if outer is None:
+            return None
+        return self._states[state_index].add_upvalue(False, outer)
 
     # ------------------------------------------------------------ statements
 
@@ -222,7 +244,8 @@ class BytecodeCompiler:
                 self._emit_arg(self._constant(node.name))
             else:
                 slot = self._declare_local(node.name)
-                self._emit(Op.SET_LOCAL, node.span)
+                cell = slot in self._state.cell_slots
+                self._emit(Op.SET_LOCAL_CELL if cell else Op.SET_LOCAL, node.span)
                 self._emit_arg(slot)
         elif isinstance(node, Assignment):
             self._expression(node.value)
@@ -274,8 +297,14 @@ class BytecodeCompiler:
         if not self._state.is_script:
             slot = self._resolve_local(name)
             if slot is not None:
-                self._emit(Op.SET_LOCAL, span)
+                cell = slot in self._state.cell_slots
+                self._emit(Op.SET_LOCAL_CELL if cell else Op.SET_LOCAL, span)
                 self._emit_arg(slot)
+                return
+            upvalue = self._resolve_upvalue(name, len(self._states) - 1)
+            if upvalue is not None:
+                self._emit(Op.SET_UPVALUE, span)
+                self._emit_arg(upvalue)
                 return
         self._emit(Op.SET_GLOBAL, span)
         self._emit_arg(self._constant(name))
@@ -339,7 +368,8 @@ class BytecodeCompiler:
             self._emit_arg(self._constant(name))
         else:
             slot = self._declare_local(name)
-            self._emit(Op.SET_LOCAL, span)
+            cell = slot in self._state.cell_slots
+            self._emit(Op.SET_LOCAL_CELL if cell else Op.SET_LOCAL, span)
             self._emit_arg(slot)
 
     def _end_loop(self) -> None:
@@ -407,25 +437,44 @@ class BytecodeCompiler:
             self._emit(Op.END_FINALLY, node.span)
 
     def _function(self, node: FunctionDeclaration) -> None:
+        # Pre-declare the name in the enclosing scope so the body can refer to
+        # itself (recursion) and resolve it as a local/upvalue, not a global.
+        name_slot: int | None = None
+        if not self._state.is_script:
+            name_slot = self._declare_local(node.name)
+
+        parameter_names = [parameter.name for parameter in node.parameters]
         function_state = _FunctionState(is_script=False)
+        function_state.captured = captured_local_names(parameter_names, node.body)
         self._states.append(function_state)
-        for parameter in node.parameters:
-            self._declare_param(parameter)
+        for index, name in enumerate(parameter_names):
+            function_state.locals.append(name)
+            if name in function_state.captured:
+                function_state.cell_slots.add(index)
         for statement in node.body:
             self._statement(statement)
         self._emit(Op.NULL, node.span)
         self._emit(Op.RETURN, node.span)
         self._states.pop()
-        function = VMFunction(
-            node.name, len(node.parameters), function_state.chunk, len(function_state.locals)
-        )
-        self._emit(Op.CONST, node.span)
-        self._emit_arg(self._constant(function))
-        self._emit(Op.DEF_GLOBAL, node.span)
-        self._emit_arg(self._constant(node.name))
 
-    def _declare_param(self, parameter: Parameter) -> None:
-        self._state.locals.append(parameter.name)
+        function = VMFunction(
+            node.name,
+            len(node.parameters),
+            function_state.chunk,
+            len(function_state.locals),
+            upvalues=function_state.upvalues,
+            captured_slots=frozenset(function_state.cell_slots),
+        )
+        # a closure value captures this function's upvalues from the current frame
+        self._emit(Op.CLOSURE, node.span)
+        self._emit_arg(self._constant(function))
+        if name_slot is None:
+            self._emit(Op.DEF_GLOBAL, node.name_span)
+            self._emit_arg(self._constant(node.name))
+        else:
+            cell = name_slot in self._state.cell_slots
+            self._emit(Op.SET_LOCAL_CELL if cell else Op.SET_LOCAL, node.name_span)
+            self._emit_arg(name_slot)
 
     # ------------------------------------------------------------ expressions
 
@@ -470,8 +519,14 @@ class BytecodeCompiler:
         if not self._state.is_script:
             slot = self._resolve_local(name)
             if slot is not None:
-                self._emit(Op.GET_LOCAL, span)
+                cell = slot in self._state.cell_slots
+                self._emit(Op.GET_LOCAL_CELL if cell else Op.GET_LOCAL, span)
                 self._emit_arg(slot)
+                return
+            upvalue = self._resolve_upvalue(name, len(self._states) - 1)
+            if upvalue is not None:
+                self._emit(Op.GET_UPVALUE, span)
+                self._emit_arg(upvalue)
                 return
         self._emit(Op.GET_GLOBAL, span)
         self._emit_arg(self._constant(name))

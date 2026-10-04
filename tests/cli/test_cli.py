@@ -113,21 +113,43 @@ def test_run_with_vm_backend(tmp_path, capsys):
 
 
 def test_run_vm_falls_back_on_unsupported(tmp_path, capsys):
-    # nested functions (closures over locals) still run on the interpreter
+    # a رجّع that crosses a أخيرا still runs on the interpreter
     program = (
-        "دالة خارجي ()\n"
-        "    دالة داخلي ()\n"
+        "دالة ق ()\n"
+        "    حاول\n"
         "        رجّع 1\n"
+        "    أخيرا\n"
+        '        اطبع "تنظيف"\n'
         "    خلاص\n"
-        "    رجّع داخلي()\n"
         "خلاص\n"
-        'اطبع خارجي()\n'
+        "اطبع ق()\n"
     )
     path = write_program(tmp_path, program)
     assert main(["run", "--vm", path]) == 0
     captured = capsys.readouterr()
     assert "1" in captured.out
     assert "VM" in captured.err  # a fallback note was printed
+
+
+def test_run_vm_executes_closures(tmp_path, capsys):
+    program = (
+        "دالة عداد ()\n"
+        "    خلي س = 0\n"
+        "    دالة زود ()\n"
+        "        س = س زائد 1\n"
+        "        رجّع س\n"
+        "    خلاص\n"
+        "    رجّع زود\n"
+        "خلاص\n"
+        "خلي ز = عداد()\n"
+        "اطبع ز()\n"
+        "اطبع ز()\n"
+    )
+    path = write_program(tmp_path, program)
+    assert main(["run", "--vm", path]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.split() == ["1", "2"]
+    assert "VM" not in captured.err  # ran on the VM, no fallback
 
 
 def test_run_vm_executes_lists_and_exceptions(tmp_path, capsys):
@@ -162,13 +184,14 @@ def test_bench_reports_speedup(tmp_path, capsys):
 
 
 def test_bench_unsupported_returns_2(tmp_path, capsys):
-    # nested functions aren't covered by the VM, so the comparison isn't available
+    # a رجّع crossing a أخيرا isn't covered by the VM, so no comparison
     program = (
-        "دالة خارجي ()\n"
-        "    دالة داخلي ()\n"
+        "دالة ق ()\n"
+        "    حاول\n"
         "        رجّع 1\n"
+        "    أخيرا\n"
+        '        اطبع "تنظيف"\n'
         "    خلاص\n"
-        "    رجّع داخلي\n"
         "خلاص\n"
     )
     path = write_program(tmp_path, program)

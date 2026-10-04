@@ -28,7 +28,7 @@ from al_arabiya.runtime.values import (
     format_value,
     is_truthy,
 )
-from al_arabiya.vm.chunk import ImportSpec, VMFunction
+from al_arabiya.vm.chunk import Cell, Closure, ImportSpec, VMFunction
 from al_arabiya.vm.opcodes import Op
 
 __all__ = ["VM", "run_function"]
@@ -62,13 +62,17 @@ _FINALLY_OK = object()  # transient marker: a finally reached by normal flow
 
 
 class _Frame:
-    __slots__ = ("function", "ip", "slots", "blocks")
+    __slots__ = ("closure", "ip", "slots", "blocks")
 
-    def __init__(self, function: VMFunction, slots: list[Any]) -> None:
-        self.function = function
+    def __init__(self, closure: Closure, slots: list[Any]) -> None:
+        self.closure = closure
         self.ip = 0
         self.slots = slots
         self.blocks: list[tuple[int, int, int]] = []  # (kind, handler_ip, stack_len)
+
+    @property
+    def function(self) -> VMFunction:
+        return self.closure.proto
 
 
 class VM:
@@ -88,7 +92,8 @@ class VM:
 
     def run(self, main: VMFunction) -> None:
         stack: list[Any] = []
-        frames: list[_Frame] = [_Frame(main, [NULL] * main.local_count)]
+        main_closure = Closure(main, [])
+        frames: list[_Frame] = [_Frame(main_closure, self._make_slots(main, []))]
         while True:
             try:
                 self._execute(frames, stack)
@@ -246,6 +251,28 @@ class VM:
                 spec = constants[code[frame.ip]]
                 frame.ip += 1
                 self._do_import(cast(ImportSpec, spec), spans[ip])
+            elif op == Op.CLOSURE:
+                proto = cast(VMFunction, constants[code[frame.ip]])
+                frame.ip += 1
+                captured: list[Cell] = []
+                for is_local, index in proto.upvalues:
+                    if is_local:
+                        captured.append(frame.slots[index])
+                    else:
+                        captured.append(frame.closure.upvalues[index])
+                stack.append(Closure(proto, captured))
+            elif op == Op.GET_UPVALUE:
+                stack.append(frame.closure.upvalues[code[frame.ip]].value)
+                frame.ip += 1
+            elif op == Op.SET_UPVALUE:
+                frame.closure.upvalues[code[frame.ip]].value = stack.pop()
+                frame.ip += 1
+            elif op == Op.GET_LOCAL_CELL:
+                stack.append(frame.slots[code[frame.ip]].value)
+                frame.ip += 1
+            elif op == Op.SET_LOCAL_CELL:
+                frame.slots[code[frame.ip]].value = stack.pop()
+                frame.ip += 1
             elif op == Op.CALL:
                 argc = code[frame.ip]
                 frame.ip += 1
@@ -329,11 +356,11 @@ class VM:
                     ErrorCode.BUILTIN_ERROR, exc.message, span, exc.suggestion
                 ) from None
             return None
-        if isinstance(callee, VMFunction):
-            if len(arguments) != callee.arity:
-                raise self._arity_error(callee.name, callee.arity, len(arguments), span)
-            slots: list[Any] = arguments + [NULL] * (callee.local_count - callee.arity)
-            return _Frame(callee, slots)
+        if isinstance(callee, Closure):
+            proto = callee.proto
+            if len(arguments) != proto.arity:
+                raise self._arity_error(proto.name, proto.arity, len(arguments), span)
+            return _Frame(callee, self._make_slots(proto, arguments))
         if isinstance(callee, ArabiyaFunction):
             # an interpreter function (e.g. imported from a module): run it there
             stack.append(self._call_arabiya(callee, arguments, span))
@@ -344,6 +371,16 @@ class VM:
             span,
             "نادِ دالة معرّفة بـ 'دالة' أو دالة مدمجة زي 'طول'",
         )
+
+    @staticmethod
+    def _make_slots(proto: VMFunction, arguments: list[Any]) -> list[Any]:
+        """Build a frame's local slots, boxing captured slots in a Cell."""
+        captured = proto.captured_slots
+        slots: list[Any] = []
+        for index in range(proto.local_count):
+            value = arguments[index] if index < len(arguments) else NULL
+            slots.append(Cell(value) if index in captured else value)
+        return slots
 
     def _call_arabiya(
         self, fn: ArabiyaFunction, arguments: list[Any], span: Span | None

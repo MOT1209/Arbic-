@@ -71,3 +71,10 @@ class Op(IntEnum):
 
     # --- modules ---
     IMPORT = 44        # operand: ImportSpec const idx → load + bind module names
+
+    # --- closures ---
+    CLOSURE = 45       # operand: proto const idx → push a Closure capturing upvalues
+    GET_UPVALUE = 46   # operand: upvalue index
+    SET_UPVALUE = 47   # operand: upvalue index
+    GET_LOCAL_CELL = 48  # operand: slot (a captured local, boxed in a Cell)
+    SET_LOCAL_CELL = 49  # operand: slot (a captured local, boxed in a Cell)
