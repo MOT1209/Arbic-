@@ -77,6 +77,24 @@ def test_check_error(tmp_path, capsys):
     assert "E2005" in capsys.readouterr().err
 
 
+def test_check_passes_well_typed_program(tmp_path, capsys):
+    path = write_program(tmp_path, "خلي س : رقم = 5\nاطبع س\n")
+    assert main(["check", path]) == 0
+    assert "سليم" in capsys.readouterr().err
+
+
+def test_check_reports_type_error(tmp_path, capsys):
+    path = write_program(tmp_path, 'خلي س : رقم = "نص"\n')
+    assert main(["check", path]) == 1
+    assert "E5001" in capsys.readouterr().err
+
+
+def test_run_ignores_type_annotations(tmp_path, capsys):
+    path = write_program(tmp_path, "خلي س : رقم = 5\nاطبع س\n")
+    assert main(["run", path]) == 0
+    assert "5" in capsys.readouterr().out
+
+
 def test_check_does_not_execute(tmp_path, capsys):
     path = write_program(tmp_path, GOOD_PROGRAM)
     main(["check", path])

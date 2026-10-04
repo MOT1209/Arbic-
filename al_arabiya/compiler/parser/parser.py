@@ -36,6 +36,7 @@ from al_arabiya.compiler.ast.nodes import (
     Statement,
     ThrowStatement,
     TryStatement,
+    TypeName,
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
@@ -411,6 +412,19 @@ class Parser:
             suggestion="ابدأ التعبير برقم أو نص أو اسم متغير أو قوس '('",
         )
 
+    def _parse_optional_type(self) -> TypeName | None:
+        """Parse ``: <type-name>`` when present; otherwise return ``None``."""
+        if not self._match(TokenType.COLON):
+            return None
+        token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد ':' لازم يجي اسم نوع (رقم، نص، منطقي، قائمة، قاموس، ...)",
+            suggestion="مثال: خلي العمر : رقم = 25",
+        )
+        assert isinstance(token.value, str)
+        return TypeName(token.span, token.value)
+
     # ------------------------------------------------------------- statements
 
     def _parse_statement(self) -> Statement | None:
@@ -587,6 +601,7 @@ class Parser:
             "بعد 'خلي' لازم يجي اسم المتغير",
             suggestion="مثال: خلي الاسم = \"أحمد\"",
         )
+        declared_type = self._parse_optional_type()
         self._expect(
             TokenType.ASSIGN,
             ErrorCode.EXPECTED_TOKEN,
@@ -602,6 +617,7 @@ class Parser:
             name_token.value,
             name_token.span,
             initializer,
+            declared_type=declared_type,
         )
 
     def _parse_assignment(self) -> Assignment:
@@ -721,6 +737,7 @@ class Parser:
             "قوس المعاملات مش متقفل",
             suggestion="اقفل القوس بـ ')'",
         )
+        return_type = self._parse_optional_type()
         self._end_statement()
         body = self._parse_block({TokenType.KW_END})
         self._expect_block_end("الدالة لازم تتقفل بكلمة 'خلاص'")
@@ -733,6 +750,7 @@ class Parser:
             name_token.span,
             parameters,
             body,
+            return_type=return_type,
         )
 
     def _parse_parameter(self) -> Parameter:
@@ -743,7 +761,8 @@ class Parser:
             suggestion="مثال: دالة اجمع (أ، ب)",
         )
         assert isinstance(token.value, str)
-        return Parameter(token.span, token.value)
+        declared_type = self._parse_optional_type()
+        return Parameter(token.span, token.value, declared_type=declared_type)
 
     def _parse_return(self) -> ReturnStatement:
         keyword = self._advance()

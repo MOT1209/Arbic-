@@ -39,6 +39,7 @@ __all__ = [
     "Statement",
     "ThrowStatement",
     "TryStatement",
+    "TypeName",
     "UnaryExpression",
     "VariableDeclaration",
     "WhileStatement",
@@ -55,6 +56,13 @@ class ASTNode:
     """Base class for every AST node."""
 
     span: Span
+
+
+@dataclass(slots=True)
+class TypeName(ASTNode):
+    """An optional type annotation, e.g. ``رقم`` / ``نص`` / ``قائمة``."""
+
+    name: str
 
 
 # ----------------------------------------------------------------- statements
@@ -81,11 +89,12 @@ class PrintStatement(Statement):
 
 @dataclass(slots=True)
 class VariableDeclaration(Statement):
-    """``خلي <name> = <expr>``"""
+    """``خلي <name> [: <type>] = <expr>``"""
 
     name: str
     name_span: Span
     initializer: Expression
+    declared_type: TypeName | None = None
 
 
 @dataclass(slots=True)
@@ -124,19 +133,21 @@ class WhileStatement(Statement):
 
 @dataclass(slots=True)
 class Parameter(ASTNode):
-    """One formal parameter in a function declaration."""
+    """One formal parameter in a function declaration (with optional type)."""
 
     name: str
+    declared_type: TypeName | None = None
 
 
 @dataclass(slots=True)
 class FunctionDeclaration(Statement):
-    """``دالة <name> (<params>) ... خلاص``"""
+    """``دالة <name> (<params>) [: <type>] ... خلاص``"""
 
     name: str
     name_span: Span
     parameters: list[Parameter]
     body: list[Statement]
+    return_type: TypeName | None = None
 
     @property
     def params(self) -> list[Parameter]:

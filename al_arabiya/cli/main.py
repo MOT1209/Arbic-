@@ -13,6 +13,7 @@ from pathlib import Path
 
 from al_arabiya import __version__
 from al_arabiya.cli.repl import run_repl
+from al_arabiya.compiler.checker import check_types
 from al_arabiya.compiler.diagnostics.diagnostics import (
     DiagnosticBag,
     render_diagnostic,
@@ -86,6 +87,16 @@ def cmd_check(path: str) -> int:
     if result.has_errors:
         sys.stderr.write("❌ فيه أخطاء في الكود\n")
         return 1
+
+    # Static (gradual) type checking runs only once the syntax is clean.
+    if result.program is not None:
+        type_bag = check_types(result.program)
+        if type_bag:
+            _emit_diagnostics(type_bag.sorted(), result.source)
+        if type_bag.has_errors:
+            sys.stderr.write("❌ فيه أخطاء في الأنواع\n")
+            return 1
+
     sys.stderr.write("✓ الكود سليم\n")
     return 0
 

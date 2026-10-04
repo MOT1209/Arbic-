@@ -52,6 +52,11 @@ class ErrorCode(StrEnum):
     # --- warnings (W3xxx) ---
     IMPLICIT_DECLARATION = "W3001"
 
+    # --- static type checking (E5xxx) ---
+    TYPE_MISMATCH = "E5001"
+    UNKNOWN_TYPE_NAME = "E5002"
+    ARGUMENT_COUNT = "E5003"
+
     # --- runtime (E4xxx) ---
     UNDEFINED_VARIABLE = "E4001"
     DIVISION_BY_ZERO = "E4002"
