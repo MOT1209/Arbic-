@@ -143,7 +143,6 @@ def test_uncaught_throw():
 @pytest.mark.parametrize(
     "source,fragment",
     [
-        ('استورد "m"', "استورد"),
         ("دالة ا ()\n    دالة ب ()\n        رجّع 1\n    خلاص\nخلاص", "المتداخلة"),
         # a رجّع that would jump out across a أخيرا
         (

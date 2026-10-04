@@ -7,6 +7,7 @@ are interchangeable for the language the compiler supports.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any, TypeGuard, cast
 
@@ -14,6 +15,9 @@ from al_arabiya.compiler.diagnostics.diagnostics import Diagnostic, Severity
 from al_arabiya.compiler.diagnostics.errors import ArabiyaRuntimeError, ErrorCode
 from al_arabiya.compiler.lexer.positions import Position, Span
 from al_arabiya.runtime.builtins import BUILTINS
+from al_arabiya.runtime.interpreter import interpreter as _interp_mod
+from al_arabiya.runtime.interpreter.interpreter import Interpreter
+from al_arabiya.runtime.modules import ModuleLoader, module_exports
 from al_arabiya.runtime.values import (
     NULL,
     ArabiyaFunction,
@@ -24,7 +28,7 @@ from al_arabiya.runtime.values import (
     format_value,
     is_truthy,
 )
-from al_arabiya.vm.chunk import VMFunction
+from al_arabiya.vm.chunk import ImportSpec, VMFunction
 from al_arabiya.vm.opcodes import Op
 
 __all__ = ["VM", "run_function"]
@@ -70,9 +74,17 @@ class _Frame:
 class VM:
     """Executes a compiled ``<main>`` function."""
 
-    def __init__(self, write: Callable[[str], None] = print) -> None:
+    def __init__(
+        self,
+        write: Callable[[str], None] = print,
+        base_dir: str | None = None,
+        loader: ModuleLoader | None = None,
+    ) -> None:
         self.write = write
+        self.base_dir = base_dir
+        self.loader = loader if loader is not None else ModuleLoader(write=write)
         self.globals: dict[str, Value] = {builtin.name: builtin for builtin in BUILTINS}
+        self._interp: Interpreter | None = None
 
     def run(self, main: VMFunction) -> None:
         stack: list[Any] = []
@@ -230,6 +242,10 @@ class VM:
                     raise marker.exc
             elif op == Op.THROW:
                 raise _VMRaise(stack.pop(), spans[ip])
+            elif op == Op.IMPORT:
+                spec = constants[code[frame.ip]]
+                frame.ip += 1
+                self._do_import(cast(ImportSpec, spec), spans[ip])
             elif op == Op.CALL:
                 argc = code[frame.ip]
                 frame.ip += 1
@@ -318,12 +334,52 @@ class VM:
                 raise self._arity_error(callee.name, callee.arity, len(arguments), span)
             slots: list[Any] = arguments + [NULL] * (callee.local_count - callee.arity)
             return _Frame(callee, slots)
+        if isinstance(callee, ArabiyaFunction):
+            # an interpreter function (e.g. imported from a module): run it there
+            stack.append(self._call_arabiya(callee, arguments, span))
+            return None
         raise self._error(
             ErrorCode.NOT_CALLABLE,
             f"{describe_value(callee)} مش دالة عشان تناديها",
             span,
             "نادِ دالة معرّفة بـ 'دالة' أو دالة مدمجة زي 'طول'",
         )
+
+    def _call_arabiya(
+        self, fn: ArabiyaFunction, arguments: list[Any], span: Span | None
+    ) -> Value:
+        if self._interp is None:
+            self._interp = Interpreter(write=self.write)
+        try:
+            return self._interp._call_function(fn, arguments, span or _ZERO_SPAN)
+        except _interp_mod._Raise as exc:  # a throw inside the interpreter function
+            raise _VMRaise(exc.value, exc.span) from None
+
+    def _do_import(self, spec: ImportSpec, span: Span | None) -> None:
+        raw = spec.path if spec.path.endswith(".arb") else spec.path + ".arb"
+        base = self.base_dir if self.base_dir is not None else os.getcwd()
+        abs_path = os.path.normpath(os.path.join(base, raw))
+        module_env = self.loader.load(abs_path, span if span is not None else _ZERO_SPAN)
+        exports = module_exports(module_env)
+
+        if spec.names is not None:
+            for name in spec.names:
+                if name not in exports:
+                    raise self._error(
+                        ErrorCode.IMPORT_ERROR,
+                        f"الاسم '{name}' مش موجود في الملف المستورد",
+                        span,
+                        "تأكد إن الاسم معرّف (دالة أو متغيّر) في الملف",
+                    )
+                self.globals[name] = exports[name]
+        elif spec.alias is not None:
+            namespace: dict[Value, Value] = {}
+            for name, exported in exports.items():
+                namespace[name] = exported
+            self.globals[spec.alias] = namespace
+        else:
+            for name, exported in exports.items():
+                self.globals[name] = exported
 
     # --------------------------------------------------------- collections
 

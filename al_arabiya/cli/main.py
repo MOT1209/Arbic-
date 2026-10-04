@@ -70,7 +70,9 @@ def cmd_run(path: str, use_vm: bool = False) -> int:
         reason = unsupported_reason(result.program)
         if reason is None:
             try:
-                VM().run(compile_program(result.program))
+                VM(base_dir=str(Path(path).resolve().parent)).run(
+                    compile_program(result.program)
+                )
             except DiagnosticError as exc:
                 sys.stderr.write(render_diagnostic(exc.diagnostic, result.source) + "\n")
                 return 1
@@ -109,6 +111,7 @@ def cmd_bench(path: str, iterations: int = 3) -> int:
 
     program = result.program
     main = compile_program(program)
+    base_dir = str(Path(path).resolve().parent)
 
     def time_backend(run_once: Callable[[], None]) -> float:
         best = float("inf")
@@ -119,9 +122,11 @@ def cmd_bench(path: str, iterations: int = 3) -> int:
         return best
 
     interpreter_time = time_backend(
-        lambda: Interpreter(write=lambda _text: None).run(program)
+        lambda: Interpreter(write=lambda _text: None, base_dir=base_dir).run(program)
     )
-    vm_time = time_backend(lambda: VM(write=lambda _text: None).run(main))
+    vm_time = time_backend(
+        lambda: VM(write=lambda _text: None, base_dir=base_dir).run(main)
+    )
 
     speedup = interpreter_time / vm_time if vm_time > 0 else float("inf")
     print(f"المفسّر (interpreter): {interpreter_time * 1000:.1f} ms")

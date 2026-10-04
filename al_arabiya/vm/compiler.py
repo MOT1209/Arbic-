@@ -41,7 +41,7 @@ from al_arabiya.compiler.ast.nodes import (
     WhileStatement,
 )
 from al_arabiya.compiler.lexer.positions import Span
-from al_arabiya.vm.chunk import Chunk, VMFunction
+from al_arabiya.vm.chunk import Chunk, ImportSpec, VMFunction
 from al_arabiya.vm.opcodes import Op
 
 __all__ = ["BytecodeCompiler", "UnsupportedFeature", "compile_program", "unsupported_reason"]
@@ -64,9 +64,9 @@ class UnsupportedFeature(Exception):
 def unsupported_reason(program: Program) -> str | None:
     """Return a human message if the VM can't run ``program``, else ``None``.
 
-    Only three things fall back to the interpreter: imports, nested functions
-    (true closures over locals), and a ``حاول`` whose ``رجّع``/``اكسر``/``كمل``
-    would jump out across a ``أخيرا`` block.
+    Two things still fall back to the interpreter: nested functions (true
+    closures over locals), and a ``حاول`` whose ``رجّع``/``اكسر``/``كمل`` would
+    jump out across a ``أخيرا`` block.
     """
     for statement in program.body:
         reason = _unsupported(statement, in_function=False)
@@ -89,8 +89,6 @@ def _children(node: ASTNode) -> list[ASTNode]:
 
 
 def _unsupported(node: ASTNode, *, in_function: bool) -> str | None:
-    if isinstance(node, ImportStatement):
-        return "'استورد'"
     if isinstance(node, FunctionDeclaration):
         if in_function:
             return "الدوال المتداخلة/closures"
@@ -265,6 +263,10 @@ class BytecodeCompiler:
             self._emit(Op.THROW, node.span)
         elif isinstance(node, TryStatement):
             self._try(node)
+        elif isinstance(node, ImportStatement):
+            spec = ImportSpec(node.path, alias=node.alias, names=node.names)
+            self._emit(Op.IMPORT, node.span)
+            self._emit_arg(self._constant(spec))
         else:  # pragma: no cover - guarded by unsupported_reason
             raise UnsupportedFeature(type(node).__name__)
 

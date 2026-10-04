@@ -7,7 +7,20 @@ from dataclasses import dataclass, field
 from al_arabiya.compiler.lexer.positions import Span
 from al_arabiya.runtime.values import Value
 
-__all__ = ["Chunk", "VMFunction"]
+__all__ = ["Chunk", "ImportSpec", "VMFunction"]
+
+
+@dataclass(slots=True, frozen=True)
+class ImportSpec:
+    """A compiled ``استورد`` request, carried in the constant pool.
+
+    ``alias`` and ``names`` are mutually exclusive; both ``None`` means a plain
+    import that merges the module's names into the current scope.
+    """
+
+    path: str
+    alias: str | None = None
+    names: tuple[str, ...] | None = None
 
 
 @dataclass(slots=True)

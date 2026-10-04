@@ -68,3 +68,6 @@ class Op(IntEnum):
     THROW = 41         # pop value → raise it
     PUSH_FINALLY_OK = 42  # push the "normal completion" marker before a finally
     END_FINALLY = 43   # pop marker; re-raise if it carries an exception
+
+    # --- modules ---
+    IMPORT = 44        # operand: ImportSpec const idx → load + bind module names

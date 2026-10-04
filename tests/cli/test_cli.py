@@ -162,8 +162,16 @@ def test_bench_reports_speedup(tmp_path, capsys):
 
 
 def test_bench_unsupported_returns_2(tmp_path, capsys):
-    # import isn't covered by the VM, so the comparison isn't available
-    path = write_program(tmp_path, 'استورد "لا_يوجد"\n')
+    # nested functions aren't covered by the VM, so the comparison isn't available
+    program = (
+        "دالة خارجي ()\n"
+        "    دالة داخلي ()\n"
+        "        رجّع 1\n"
+        "    خلاص\n"
+        "    رجّع داخلي\n"
+        "خلاص\n"
+    )
+    path = write_program(tmp_path, program)
     assert main(["bench", path]) == 2
 
 
