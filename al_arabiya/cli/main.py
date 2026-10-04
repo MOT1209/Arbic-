@@ -26,7 +26,7 @@ from al_arabiya.runtime.interpreter.interpreter import Interpreter
 
 __all__ = ["main"]
 
-_COMMANDS = frozenset({"run", "check", "repl", "version", "help"})
+_COMMANDS = frozenset({"run", "check", "repl", "lsp", "version", "help"})
 
 
 def _configure_stdio() -> None:
@@ -114,6 +114,7 @@ def cmd_help() -> int:
         "  arabic run <ملف.arb>    تشغيل ملف\n"
         "  arabic check <ملف.arb>  تحليل بدون تشغيل (بيطبع كل الأخطاء)\n"
         "  arabic repl             وضع التفاعل المباشر\n"
+        "  arabic lsp              خادم المحرّر (Language Server عبر stdio)\n"
         "  arabic version          إصدار اللغة\n"
         "  arabic help             هذه المساعدة\n"
         "\n"
@@ -144,6 +145,10 @@ def main(argv: list[str] | None = None) -> int:
     name, rest = args[0], args[1:]
     if name == "repl":
         return run_repl()
+    if name == "lsp":
+        from al_arabiya.lsp.server import main as lsp_main
+
+        return lsp_main()
     if name == "version":
         return cmd_version()
     if name == "help":

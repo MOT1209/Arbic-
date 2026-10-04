@@ -27,6 +27,7 @@ Repository = "https://github.com/mot1209/arbic-"
 
 [project.scripts]
 arabic = "al_arabiya.cli.main:main"
+arabic-lsp = "al_arabiya.lsp.server:main"
 
 [project.optional-dependencies]
 dev = [
