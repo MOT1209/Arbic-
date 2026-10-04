@@ -56,6 +56,9 @@ class TokenType(Enum):
     KW_BREAK = "اكسر"
     KW_CONTINUE = "كمل"
     KW_NULL = "فراغ"
+    KW_FOREACH = "لكل"
+    KW_IMPORT = "استورد"
+    KW_AS = "باسم"
 
     # --- operators ---
     PLUS = "+"

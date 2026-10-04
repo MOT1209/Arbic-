@@ -20,10 +20,16 @@ __all__ = [
     "ContinueStatement",
     "Expression",
     "ExpressionStatement",
+    "ForEachStatement",
     "FunctionDeclaration",
     "Identifier",
     "IfStatement",
+    "ImportStatement",
+    "IndexAssignment",
+    "IndexExpression",
+    "ListLiteral",
     "Literal",
+    "MapLiteral",
     "NullLiteral",
     "Parameter",
     "PrintStatement",
@@ -151,6 +157,35 @@ class ExpressionStatement(Statement):
 
 
 @dataclass(slots=True)
+class IndexAssignment(Statement):
+    """``<collection>[<index>] = <value>``"""
+
+    collection: Expression
+    index: Expression
+    value: Expression
+
+
+@dataclass(slots=True)
+class ForEachStatement(Statement):
+    """``لكل <name> في <iterable> ... خلاص``"""
+
+    variable: str
+    variable_span: Span
+    iterable: Expression
+    body: list[Statement]
+
+
+@dataclass(slots=True)
+class ImportStatement(Statement):
+    """``استورد "<path>"`` optionally ``باسم <alias>`` or ``من "<path>" استورد a، b``."""
+
+    path: str
+    path_span: Span
+    alias: str | None = None
+    names: tuple[str, ...] | None = None
+
+
+@dataclass(slots=True)
 class BreakStatement(Statement):
     """``اكسر`` — stop the innermost loop."""
 
@@ -193,6 +228,28 @@ class CallExpression(Expression):
 
     callee: Expression
     arguments: list[Expression]
+
+
+@dataclass(slots=True)
+class IndexExpression(Expression):
+    """``<target>[<index>]``"""
+
+    target: Expression
+    index: Expression
+
+
+@dataclass(slots=True)
+class ListLiteral(Expression):
+    """``[<e>، <e>، ...]``"""
+
+    elements: list[Expression]
+
+
+@dataclass(slots=True)
+class MapLiteral(Expression):
+    """``{<key>: <value>، ...}``"""
+
+    entries: list[tuple[Expression, Expression]]
 
 
 @dataclass(slots=True)

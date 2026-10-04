@@ -32,6 +32,14 @@ class Environment:
     def has(self, name: str) -> bool:
         return self._resolve(name) is not None
 
+    def local_names(self) -> list[str]:
+        """Names defined directly in this scope (not parents)."""
+        return list(self._values)
+
+    def local_items(self) -> dict[str, Value]:
+        """A copy of the name→value bindings defined directly in this scope."""
+        return dict(self._values)
+
     def get(self, name: str, span: Span) -> Value:
         scope = self._resolve(name)
         if scope is None:

@@ -62,7 +62,10 @@ def cmd_run(path: str) -> int:
         return 1
 
     runtime_bag: DiagnosticBag = DiagnosticBag()
-    interpreter = Interpreter(diagnostics=runtime_bag)
+    interpreter = Interpreter(
+        diagnostics=runtime_bag,
+        base_dir=str(Path(path).resolve().parent),
+    )
     try:
         interpreter.run(result.program)
     except DiagnosticError as exc:

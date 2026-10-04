@@ -7,6 +7,7 @@ carrying a full diagnostic with source location.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any, TypeGuard, cast
 
@@ -18,10 +19,16 @@ from al_arabiya.compiler.ast.nodes import (
     ContinueStatement,
     Expression,
     ExpressionStatement,
+    ForEachStatement,
     FunctionDeclaration,
     Identifier,
     IfStatement,
+    ImportStatement,
+    IndexAssignment,
+    IndexExpression,
+    ListLiteral,
     Literal,
+    MapLiteral,
     NullLiteral,
     PrintStatement,
     Program,
@@ -37,6 +44,7 @@ from al_arabiya.compiler.diagnostics.errors import ArabiyaRuntimeError, ErrorCod
 from al_arabiya.compiler.lexer.positions import Span
 from al_arabiya.runtime.builtins import make_global_env
 from al_arabiya.runtime.interpreter.environment import Environment, Value
+from al_arabiya.runtime.modules import ModuleLoader, module_exports
 from al_arabiya.runtime.values import (
     NULL,
     ArabiyaFunction,
@@ -93,10 +101,14 @@ class Interpreter(ASTVisitor):
         environment: Environment | None = None,
         diagnostics: DiagnosticBag | None = None,
         write: Callable[[str], None] = print,
+        base_dir: str | None = None,
+        loader: ModuleLoader | None = None,
     ) -> None:
         self.environment = environment if environment is not None else make_global_env()
         self.diagnostics = diagnostics if diagnostics is not None else DiagnosticBag()
         self.write = write
+        self.base_dir = base_dir
+        self.loader = loader if loader is not None else ModuleLoader(write=write)
 
     def run(self, program: Program) -> None:
         try:
@@ -241,6 +253,77 @@ class Interpreter(ASTVisitor):
     def visit_continue_statement(self, node: ContinueStatement) -> None:
         raise _Continue(node.span)
 
+    def visit_for_each_statement(self, node: ForEachStatement) -> None:
+        iterable = self._eval(node.iterable)
+        for item in self._iterate(iterable, node.iterable.span):
+            self.environment.define(node.variable, item)
+            try:
+                for statement in node.body:
+                    self.visit(statement)
+            except _Continue:
+                continue
+            except _Break:
+                break
+
+    def _iterate(self, value: Value, span: Span) -> list[Value]:
+        if isinstance(value, list):
+            return list(value)
+        if isinstance(value, str):
+            return list(value)
+        if isinstance(value, dict):
+            return list(value.keys())
+        raise self._control_error(
+            ErrorCode.NOT_ITERABLE,
+            f"مينفعش أدور على {describe_value(value)} بـ 'لكل'",
+            span,
+            "استخدم 'لكل' مع قائمة أو نص أو قاموس",
+        )
+
+    def visit_index_assignment(self, node: IndexAssignment) -> None:
+        collection = self._eval(node.collection)
+        index = self._eval(node.index)
+        value = self._eval(node.value)
+        if isinstance(collection, list):
+            position = self._list_index(collection, index, node.index.span)
+            collection[position] = value
+            return
+        if isinstance(collection, dict):
+            key = self._hashable_key(index, node.index.span)
+            collection[key] = value
+            return
+        raise self._control_error(
+            ErrorCode.INVALID_INDEX,
+            f"مينفعش أحط قيمة جوّه {describe_value(collection)}",
+            node.collection.span,
+            "الفهرسة بالكتابة بتشتغل مع القوائم والقواميس بس",
+        )
+
+    def visit_import_statement(self, node: ImportStatement) -> None:
+        raw = node.path if node.path.endswith(".arb") else node.path + ".arb"
+        base = self.base_dir if self.base_dir is not None else os.getcwd()
+        abs_path = os.path.normpath(os.path.join(base, raw))
+        module_env = self.loader.load(abs_path, node.path_span)
+        exports = module_exports(module_env)
+
+        if node.names is not None:
+            for name in node.names:
+                if name not in exports:
+                    raise self._control_error(
+                        ErrorCode.IMPORT_ERROR,
+                        f"الاسم '{name}' مش موجود في الملف المستورد",
+                        node.path_span,
+                        "تأكد إن الاسم معرّف (دالة أو متغيّر) في الملف",
+                    )
+                self.environment.define(name, exports[name])
+        elif node.alias is not None:
+            namespace: dict[Value, Value] = {}
+            for name, exported in exports.items():
+                namespace[name] = exported
+            self.environment.define(node.alias, namespace)
+        else:
+            for name, exported in exports.items():
+                self.environment.define(name, exported)
+
     # ------------------------------------------------------------ expressions
 
     def visit_literal(self, node: Literal) -> Value:
@@ -251,6 +334,68 @@ class Interpreter(ASTVisitor):
 
     def visit_identifier(self, node: Identifier) -> Value:
         return self.environment.get(node.name, node.span)
+
+    def visit_list_literal(self, node: ListLiteral) -> Value:
+        return [self._eval(element) for element in node.elements]
+
+    def visit_map_literal(self, node: MapLiteral) -> Value:
+        result: dict[Value, Value] = {}
+        for key_node, value_node in node.entries:
+            key = self._hashable_key(self._eval(key_node), key_node.span)
+            result[key] = self._eval(value_node)
+        return result
+
+    def visit_index_expression(self, node: IndexExpression) -> Value:
+        target = self._eval(node.target)
+        index = self._eval(node.index)
+        if isinstance(target, (list, str)):
+            position = self._list_index(target, index, node.index.span)
+            return target[position]
+        if isinstance(target, dict):
+            key = self._hashable_key(index, node.index.span)
+            if key not in target:
+                raise self._control_error(
+                    ErrorCode.KEY_NOT_FOUND,
+                    f"المفتاح {format_value(key)} مش موجود في القاموس",
+                    node.index.span,
+                    "تأكد إن المفتاح موجود، أو ضيفه الأول",
+                )
+            return target[key]
+        raise self._control_error(
+            ErrorCode.INVALID_INDEX,
+            f"مينفعش أفهرس {describe_value(target)}",
+            node.target.span,
+            "الفهرسة بتشتغل مع القوائم والنصوص والقواميس",
+        )
+
+    def _list_index(self, sequence: list[Value] | str, index: Value, span: Span) -> int:
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise self._control_error(
+                ErrorCode.INVALID_INDEX,
+                f"الفهرس لازم يكون رقم صحيح، مش {describe_value(index)}",
+                span,
+                "مثال: ق[0]",
+            )
+        length = len(sequence)
+        position = index + length if index < 0 else index  # support negative indices
+        if position < 0 or position >= length:
+            raise self._control_error(
+                ErrorCode.INDEX_OUT_OF_RANGE,
+                f"الفهرس {index} بره حدود العنصر (الطول {length})",
+                span,
+                "استخدم فهرس بين 0 و (الطول ناقص 1)",
+            )
+        return position
+
+    def _hashable_key(self, key: Value, span: Span) -> Value:
+        if isinstance(key, (list, dict, ArabiyaFunction, NativeFunction)):
+            raise self._control_error(
+                ErrorCode.UNHASHABLE_KEY,
+                f"مينفعش أستخدم {describe_value(key)} كمفتاح",
+                span,
+                "المفاتيح لازم تكون نص أو رقم أو منطقي",
+            )
+        return key
 
     def visit_call_expression(self, node: CallExpression) -> Value:
         callee = self._eval(node.callee)
