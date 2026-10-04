@@ -106,6 +106,38 @@ def test_run_without_file_argument(tmp_path, capsys):
     assert "محتاج اسم ملف" in capsys.readouterr().err
 
 
+def test_run_with_vm_backend(tmp_path, capsys):
+    path = write_program(tmp_path, "دالة م (س)\n    رجّع س في س\nخلاص\nاطبع م(8)\n")
+    assert main(["run", "--vm", path]) == 0
+    assert "64" in capsys.readouterr().out
+
+
+def test_run_vm_falls_back_on_unsupported(tmp_path, capsys):
+    path = write_program(tmp_path, "اطبع [1، 2][0]\n")
+    assert main(["run", "--vm", path]) == 0
+    captured = capsys.readouterr()
+    assert "1" in captured.out
+    assert "VM" in captured.err  # a fallback note was printed
+
+
+def test_run_vm_runtime_error(tmp_path, capsys):
+    path = write_program(tmp_path, "اطبع 1 على 0\n")
+    assert main(["run", "--vm", path]) == 1
+    assert "E4002" in capsys.readouterr().err
+
+
+def test_bench_reports_speedup(tmp_path, capsys):
+    path = write_program(tmp_path, "خلي ع = 0\nطالما ع أصغر من 100\n    ع = ع زائد 1\nخلاص\n")
+    assert main(["bench", path]) == 0
+    out = capsys.readouterr().out
+    assert "speedup" in out or "التسريع" in out
+
+
+def test_bench_unsupported_returns_2(tmp_path, capsys):
+    path = write_program(tmp_path, "اطبع [1][0]\n")
+    assert main(["bench", path]) == 2
+
+
 # ---------------------------------------------------------------------- REPL
 
 

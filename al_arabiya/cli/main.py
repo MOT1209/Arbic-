@@ -9,6 +9,8 @@ Exit codes:
 from __future__ import annotations
 
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from al_arabiya import __version__
@@ -23,10 +25,12 @@ from al_arabiya.compiler.diagnostics.errors import DiagnosticError
 from al_arabiya.compiler.diagnostics.source import SourceFile
 from al_arabiya.compiler.frontend import compile_source
 from al_arabiya.runtime.interpreter.interpreter import Interpreter
+from al_arabiya.vm.compiler import compile_program, unsupported_reason
+from al_arabiya.vm.vm import VM
 
 __all__ = ["main"]
 
-_COMMANDS = frozenset({"run", "check", "repl", "lsp", "version", "help"})
+_COMMANDS = frozenset({"run", "check", "bench", "repl", "lsp", "version", "help"})
 
 
 def _configure_stdio() -> None:
@@ -52,7 +56,7 @@ def _read_source(path: str) -> str | None:
         return None
 
 
-def cmd_run(path: str) -> int:
+def cmd_run(path: str, use_vm: bool = False) -> int:
     text = _read_source(path)
     if text is None:
         return 2
@@ -61,6 +65,17 @@ def cmd_run(path: str) -> int:
         _emit_diagnostics(result.diagnostics, result.source)
     if result.program is None:
         return 1
+
+    if use_vm:
+        reason = unsupported_reason(result.program)
+        if reason is None:
+            try:
+                VM().run(compile_program(result.program))
+            except DiagnosticError as exc:
+                sys.stderr.write(render_diagnostic(exc.diagnostic, result.source) + "\n")
+                return 1
+            return 0
+        sys.stderr.write(f"ℹ️ الـ VM لسه مبيدعمش {reason}؛ رجعت للمفسّر\n")
 
     runtime_bag: DiagnosticBag = DiagnosticBag()
     interpreter = Interpreter(
@@ -74,6 +89,44 @@ def cmd_run(path: str) -> int:
         return 1
     if runtime_bag:
         _emit_diagnostics(runtime_bag.sorted(), result.source)
+    return 0
+
+
+def cmd_bench(path: str, iterations: int = 3) -> int:
+    text = _read_source(path)
+    if text is None:
+        return 2
+    result = compile_source(text, path)
+    if result.diagnostics:
+        _emit_diagnostics(result.diagnostics, result.source)
+    if result.program is None:
+        return 1
+
+    reason = unsupported_reason(result.program)
+    if reason is not None:
+        sys.stderr.write(f"ℹ️ الـ VM لسه مبيدعمش {reason}؛ المقارنة مش متاحة\n")
+        return 2
+
+    program = result.program
+    main = compile_program(program)
+
+    def time_backend(run_once: Callable[[], None]) -> float:
+        best = float("inf")
+        for _ in range(max(1, iterations)):
+            start = time.perf_counter()
+            run_once()
+            best = min(best, time.perf_counter() - start)
+        return best
+
+    interpreter_time = time_backend(
+        lambda: Interpreter(write=lambda _text: None).run(program)
+    )
+    vm_time = time_backend(lambda: VM(write=lambda _text: None).run(main))
+
+    speedup = interpreter_time / vm_time if vm_time > 0 else float("inf")
+    print(f"المفسّر (interpreter): {interpreter_time * 1000:.1f} ms")
+    print(f"الآلة (bytecode VM):   {vm_time * 1000:.1f} ms")
+    print(f"التسريع (speedup):     {speedup:.2f}×  (أفضل من {iterations} محاولات)")
     return 0
 
 
@@ -111,8 +164,9 @@ def cmd_help() -> int:
         "العربية (AlArabiya) — أمر التشغيل\n"
         "\n"
         "الاستخدام:\n"
-        "  arabic run <ملف.arb>    تشغيل ملف\n"
+        "  arabic run <ملف.arb>    تشغيل ملف (أضف --vm لآلة البايت-كود)\n"
         "  arabic check <ملف.arb>  تحليل بدون تشغيل (بيطبع كل الأخطاء)\n"
+        "  arabic bench <ملف.arb>  مقارنة سرعة المفسّر بآلة البايت-كود\n"
         "  arabic repl             وضع التفاعل المباشر\n"
         "  arabic lsp              خادم المحرّر (Language Server عبر stdio)\n"
         "  arabic version          إصدار اللغة\n"
@@ -153,9 +207,14 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_version()
     if name == "help":
         return cmd_help()
-    if len(rest) != 1:
+
+    use_vm = "--vm" in rest
+    files = [argument for argument in rest if not argument.startswith("-")]
+    if len(files) != 1:
         sys.stderr.write(f"❌ الأمر '{name}' محتاج اسم ملف واحد\n")
         return 2
     if name == "check":
-        return cmd_check(rest[0])
-    return cmd_run(rest[0])
+        return cmd_check(files[0])
+    if name == "bench":
+        return cmd_bench(files[0])
+    return cmd_run(files[0], use_vm=use_vm)
