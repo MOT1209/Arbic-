@@ -41,6 +41,44 @@ class ModuleLoader:
         self._cache: dict[str, Environment] = {}
         self._loading: set[str] = set()
 
+    def locate(self, name: str, base_dir: str) -> str:
+        """Resolve an import name to an absolute path.
+
+        A sibling ``.arb`` file wins; otherwise an installed package in the
+        nearest ``حزم/`` folder found by walking up from ``base_dir`` (so a
+        vendored package can import its own dependencies from the project's
+        ``حزم/``).  Returns the sibling candidate when nothing exists, so
+        :meth:`load` reports the usual MODULE_NOT_FOUND.
+        """
+        raw = name if name.endswith(".arb") else name + ".arb"
+        direct = os.path.normpath(os.path.join(base_dir, raw))
+        if os.path.isfile(direct):
+            return direct
+        bare = name[:-4] if name.endswith(".arb") else name
+        for ancestor in self._ancestors(base_dir):
+            packages = os.path.join(ancestor, "حزم")
+            for candidate in (
+                os.path.join(packages, raw),
+                os.path.join(packages, bare, "رئيسي.arb"),
+                os.path.join(packages, bare, raw),
+            ):
+                normalized = os.path.normpath(candidate)
+                if os.path.isfile(normalized):
+                    return normalized
+        return direct
+
+    @staticmethod
+    def _ancestors(start: str) -> list[str]:
+        current = os.path.abspath(start)
+        chain = [current]
+        while True:
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            chain.append(parent)
+            current = parent
+        return chain
+
     def load(self, abs_path: str, span: Span) -> Environment:
         if abs_path in self._cache:
             return self._cache[abs_path]

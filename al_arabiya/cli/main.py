@@ -8,6 +8,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -30,7 +31,9 @@ from al_arabiya.vm.vm import VM
 
 __all__ = ["main"]
 
-_COMMANDS = frozenset({"run", "check", "bench", "repl", "lsp", "version", "help"})
+_COMMANDS = frozenset(
+    {"run", "check", "bench", "repl", "lsp", "packages", "حزمة", "version", "help"}
+)
 
 
 def _configure_stdio() -> None:
@@ -159,6 +162,62 @@ def cmd_check(path: str) -> int:
     return 0
 
 
+def _registry_path(rest: list[str]) -> str | None:
+    for index, argument in enumerate(rest):
+        if argument == "--registry" and index + 1 < len(rest):
+            return rest[index + 1]
+        if argument.startswith("--registry="):
+            return argument.split("=", 1)[1]
+    return os.environ.get("ARABIC_REGISTRY")
+
+
+def cmd_packages(rest: list[str]) -> int:
+    from al_arabiya.packages import manager
+
+    positional = [arg for arg in rest if not arg.startswith("--")]
+    action = positional[0] if positional else "help"
+    project_dir = Path(positional[1]) if len(positional) > 1 else Path.cwd()
+
+    if action in ("install", "تثبيت"):
+        registry_path = _registry_path(rest)
+        if registry_path is None:
+            sys.stderr.write(
+                "❌ محتاج سجلّ الحزم: --registry <مسار> أو المتغيّر ARABIC_REGISTRY\n"
+            )
+            return 2
+        try:
+            resolved = manager.install(project_dir, manager.Registry(Path(registry_path)))
+        except manager.PackageError as exc:
+            sys.stderr.write(f"❌ {exc}\n")
+            return 1
+        if not resolved:
+            print("مفيش اعتماديات للتثبيت.")
+            return 0
+        print("اتثبتت الحزم:")
+        for name, version in sorted(resolved.items()):
+            print(f"  {name} {version}")
+        return 0
+
+    if action in ("list", "قائمة"):
+        try:
+            locked = manager.read_lockfile(project_dir)
+        except (OSError, ValueError) as exc:
+            sys.stderr.write(f"❌ مش قادر أقرا ملف القفل: {exc}\n")
+            return 1
+        if not locked:
+            print("مفيش حزم مثبتة (شغّل: arabic packages install).")
+            return 0
+        print("الحزم المثبتة:")
+        for locked_name, locked_version in sorted(locked.items()):
+            print(f"  {locked_name} {locked_version}")
+        return 0
+
+    sys.stderr.write(
+        "استخدام: arabic packages <install|list> [مجلد] [--registry <مسار>]\n"
+    )
+    return 2
+
+
 def cmd_version() -> int:
     print(f"arabic {__version__} — AlArabiya / العربية")
     return 0
@@ -174,6 +233,7 @@ def cmd_help() -> int:
         "  arabic bench <ملف.arb>  مقارنة سرعة المفسّر بآلة البايت-كود\n"
         "  arabic repl             وضع التفاعل المباشر\n"
         "  arabic lsp              خادم المحرّر (Language Server عبر stdio)\n"
+        "  arabic packages install تثبيت الحزم من السجلّ المحلّي (في حزم/)\n"
         "  arabic version          إصدار اللغة\n"
         "  arabic help             هذه المساعدة\n"
         "\n"
@@ -208,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
         from al_arabiya.lsp.server import main as lsp_main
 
         return lsp_main()
+    if name in ("packages", "حزمة"):
+        return cmd_packages(rest)
     if name == "version":
         return cmd_version()
     if name == "help":

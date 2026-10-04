@@ -20,3 +20,7 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# AlArabiya packages (vendored dependencies + lockfile)
+حزم/
+حزمة-قفل.json

@@ -393,9 +393,8 @@ class VM:
             raise _VMRaise(exc.value, exc.span) from None
 
     def _do_import(self, spec: ImportSpec, span: Span | None) -> None:
-        raw = spec.path if spec.path.endswith(".arb") else spec.path + ".arb"
         base = self.base_dir if self.base_dir is not None else os.getcwd()
-        abs_path = os.path.normpath(os.path.join(base, raw))
+        abs_path = self.loader.locate(spec.path, base)
         module_env = self.loader.load(abs_path, span if span is not None else _ZERO_SPAN)
         exports = module_exports(module_env)
 
