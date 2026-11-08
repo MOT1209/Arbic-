@@ -185,8 +185,9 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 `ثابت`، sets/tuples، شرائح، interpolation، member access، async/await،
 generators، debugger، playground، سجلّ حزم على الإنترنت، Python interop، IR،
 optimizer. والمنسّق (`arabic format`) بيوحّد المسافات بس، وعزل التنفيذ
-(`--sandbox`) منفّذ جزئيًا: عملية عاملة وحدود وقت/ذاكرة/مخرجات، من غير حجب
-fs/net على مستوى OS ([sandbox-design.md](architecture/sandbox-design.md)).
+(`--sandbox`) بيشغّل عاملًا منفصلًا بحدود وقت/ذاكرة/مخرجات، وعلى Linux x86_64
+بيحجب الشبكة وكتابة الملفات بـ seccomp؛ Windows/macOS لسه بدون حجب OS
+([sandbox-design.md](architecture/sandbox-design.md)).
 
 ## 12. المطابقة (Conformance)
 

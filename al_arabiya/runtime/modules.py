@@ -19,9 +19,38 @@ from al_arabiya.runtime.builtins import BUILTINS, make_global_env
 from al_arabiya.runtime.interpreter.environment import Environment
 from al_arabiya.runtime.values import Value
 
-__all__ = ["ModuleLoader", "module_exports"]
+__all__ = ["ModuleLoader", "module_exports", "stdlib_names", "stdlib_path"]
 
 _BUILTIN_NAMES = frozenset(builtin.name for builtin in BUILTINS)
+
+#: Modules that ship with the interpreter, importable from any project.
+_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_STDLIB_DIR = os.path.join(_PACKAGE_DIR, "stdlib")
+
+
+def stdlib_names() -> tuple[str, ...]:
+    """The names of the bundled standard-library modules."""
+    if not os.path.isdir(_STDLIB_DIR):
+        return ()
+    return tuple(
+        sorted(
+            entry[:-4]
+            for entry in os.listdir(_STDLIB_DIR)
+            if entry.endswith(".arb") and os.path.isfile(os.path.join(_STDLIB_DIR, entry))
+        )
+    )
+
+
+def stdlib_path(name: str) -> str | None:
+    """Absolute path of a bundled module, or ``None`` when it is not one.
+
+    Only names that exist in :data:`_STDLIB_DIR` are resolved, so this can
+    never turn an arbitrary import into a path outside the project.
+    """
+    bare = name[:-4] if name.endswith(".arb") else name
+    if bare not in stdlib_names():
+        return None
+    return os.path.join(_STDLIB_DIR, bare + ".arb")
 
 
 def _is_inside(path: str, directory: str) -> bool:
@@ -86,6 +115,9 @@ class ModuleLoader:
                 normalized = os.path.normpath(candidate)
                 if os.path.isfile(normalized):
                     return normalized
+        bundled = stdlib_path(name)
+        if bundled is not None:
+            return bundled
         return direct
 
     @staticmethod

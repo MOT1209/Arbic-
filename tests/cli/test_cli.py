@@ -317,6 +317,26 @@ def test_repl_continues_an_expression_inside_parens():
     assert "3" in out
 
 
+def test_repl_keeps_buffering_until_the_block_closes():
+    out: list[str] = []
+    code = run_repl(
+        input_fn=make_input(
+            [
+                "دالة ضرب (س)",
+                "رجّع س في 2",
+                "",
+                "خلاص",
+                "اطبع ضرب(4)",
+                "خروج",
+            ]
+        ),
+        out=out.append,
+        err=lambda _text: None,
+    )
+    assert code == 0
+    assert "8" in out
+
+
 def test_repl_unterminated_string_reports_and_keeps_going():
     out: list[str] = []
     err: list[str] = []

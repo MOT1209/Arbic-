@@ -8,11 +8,12 @@ The worker is a separate ``python`` process with:
 * capped stdout/stderr, so a program cannot exhaust our memory by printing;
 * the program's folder as the working directory, exactly like a local run.
 
-What this does *not* do yet: block filesystem or network access at the OS
-level.  Today the language has no file/network builtins at all, so a program
-cannot reach either; the moment interop or I/O lands, the seccomp/AppContainer
-layer described in ``docs/architecture/sandbox-design.md`` becomes mandatory
-before that feature ships.
+On x86_64 Linux the worker also installs a seccomp filter (see
+``limits_linux``) that makes socket creation and every filesystem write fail
+with ``EPERM``.  Windows and macOS keep the resource limits only; the
+AppContainer/``sandbox-exec`` layers described in
+``docs/architecture/sandbox-design.md`` are still required before interop or
+I/O ships.
 """
 
 from __future__ import annotations

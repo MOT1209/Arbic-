@@ -139,7 +139,7 @@ pip install -e .
 ## 🧪 الاختبارات
 
 ```bash
-pytest              # 599 اختبار (+2 skip على Windows: symlink وحد الذاكرة)
+pytest              # 608 اختبار (+2 skip؛ على Windows 4: symlink، حد الذاكرة، واختبارا seccomp)
 ruff check .        # الـ lint
 mypy                # التحقق الصارم للأنواع
 python tools/check.py   # الثلاثة مع بعض

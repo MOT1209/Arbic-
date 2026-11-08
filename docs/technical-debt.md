@@ -36,7 +36,7 @@
 | TD-17 | `span` القوسين لا يشملهما | P3 | ✅ اتصلح |
 | TD-18 | لا SECURITY.md / CONTRIBUTING.md | P2 | ✅ مواصفة + دليل ترحيل |
 | TD-19 | لا `arabic build/init/test/format/doctor` | P2 | ✅ الخمسة اتنفذوا |
-| TD-20 | لا عزل تنفيذ للـ playground/interop موثّق | P1 (قبل التنفيذ) | 🟡 عامل معزول + حدود؛ حجب OS لسه |
+| TD-20 | لا عزل تنفيذ للـ playground/interop موثّق | P1 (قبل التنفيذ) | 🟡 عامل + حدود + seccomp على Linux x86_64؛ Windows/macOS لسه |
 | TD-21 | الإصدار `0.1.0` مقابل هدف «2.0» بلا سياسة إصدارات | P3 | ✅ ADR-01 |
 
 **حالة السداد (2026-11-08):**
@@ -52,7 +52,7 @@
 - **TD-09:** 🟡 — فحص أنواع تدريجي في `check` بس، وده القرار الموثّق في المواصفة §8.
 - **TD-11:** 🟡 — الاختبارات الحدّية اتضافت، لكن منطق الاستمرارية لسه heuristic (موثّق كقيد).
 - **TD-19:** ✅ — `init`، `doctor`، `build`، `test`، `format` كلهم موجودين ومختبَرين.
-- **TD-20:** 🟡 — العامل المعزول اتنفذ (عملية منفصلة، rlimit/Job Object، مهلة، سقف مخرجات، stdin مقفول)، وحجب fs/net على مستوى OS لسه.
+- **TD-20:** 🟡 — العامل المعزول اتنفذ (عملية منفصلة، rlimit/Job Object، مهلة، سقف مخرجات، stdin مقفول)، وعلى Linux x86_64 اتضاف حجب شبكة/كتابة على مستوى النواة بـ seccomp. Windows/macOS لسه محتاجين AppContainer/`sandbox-exec`.
 
 ---
 
@@ -326,7 +326,7 @@ push_log.txt      0
 
 **المعالجة:** تصميم عزل (subprocess/container + resource limits + filesystem/network restrictions) قبل كتابة أول سطر interop. لا يُنفَّذ allowlist فقط كضمان أمني.
 
-**الحالة: 🟡** — التصميم في `docs/architecture/sandbox-design.md` والتنفيذ في `al_arabiya/sandbox/`: عملية عاملة منفصلة، `RLIMIT_AS/CPU/FSIZE/NOFILE` على POSIX، Job Object على Windows، مهلة حائط، سقف مخرجات، stdin مغلق، وبيئة مصغّرة. حجب الملفات/الشبكة على مستوى OS (seccomp/AppContainer) لسه مطلوب قبل interop.
+**الحالة: 🟡** — التصميم في `docs/architecture/sandbox-design.md` والتنفيذ في `al_arabiya/sandbox/`: عملية عاملة منفصلة، `RLIMIT_AS/CPU/FSIZE/NOFILE` على POSIX، Job Object على Windows، مهلة حائط، سقف مخرجات، stdin مغلق، وبيئة مصغّرة. وعلى Linux x86_64 فيه كمان مرشّح seccomp (`sandbox/limits_linux.py`) بيرجّع `EPERM` لأي syscall شبكة أو `open/openat` بصلاحية كتابة، ومثبَّت باختبار بيشغّل النواة فعليًا (`tests/sandbox/test_os_guard.py`). الباقي: AppContainer على Windows و`sandbox-exec` على macOS، وحجب القراءة برّه المشروع — كلهم مطلوبين قبل interop.
 
 ---
 

@@ -23,16 +23,33 @@ __all__ = ["run_repl"]
 _EXIT_WORDS = frozenset({"خروج", "exit", "quit"})
 _OPEN_BRACKETS = frozenset({"(", "[", "{"})
 _CLOSE_BRACKETS = frozenset({")", "]", "}"})
+#: Keywords that open a block closed by ``خلاص``.
+_BLOCK_OPENERS = frozenset(
+    {
+        TokenType.KW_IF,
+        TokenType.KW_REPEAT,
+        TokenType.KW_WHILE,
+        TokenType.KW_FUNC,
+        TokenType.KW_FOREACH,
+        TokenType.KW_TRY,
+    }
+)
 
 
-def _bracket_delta(text: str) -> int:
-    depth = 0
+def _pending_depth(text: str) -> tuple[int, int]:
+    """Bracket depth and open-block count in ``text`` (never negative)."""
+    brackets = 0
+    blocks = 0
     for token in Lexer(text).tokenize():
         if token.type in (TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE):
-            depth += 1
+            brackets += 1
         elif token.type in (TokenType.RPAREN, TokenType.RBRACKET, TokenType.RBRACE):
-            depth -= 1
-    return depth
+            brackets -= 1
+        elif token.type in _BLOCK_OPENERS:
+            blocks += 1
+        elif token.type is TokenType.KW_END:
+            blocks = max(0, blocks - 1)
+    return brackets, blocks
 
 
 def _is_incomplete(diagnostics: Iterable[Diagnostic], source_length: int) -> bool:
@@ -57,7 +74,8 @@ def run_repl(
 
     environment = make_global_env()
     buffer: list[str] = []
-    depth = 0
+    brackets = 0
+    blocks = 0
 
     while True:
         prompt = "... " if buffer else ">>> "
@@ -72,19 +90,18 @@ def run_repl(
         if not buffer and stripped in _EXIT_WORDS:
             write("مع السلامة 👋")
             return 0
-        if buffer and not stripped and not stripped.join(buffer).strip():
-            buffer.clear()
-            continue
+        if buffer and not stripped:
+            continue  # inside an unfinished construct: blank lines are blank
 
-        separator = " " if depth > 0 else "\n"
+        separator = " " if brackets > 0 else "\n"
         source = separator.join([*buffer, line]) if buffer else line
         buffer.clear()
         buffer.append(source)
-        depth = _bracket_delta(source)
+        brackets, blocks = _pending_depth(source)
 
         if not source.strip():
             buffer.clear()
-            depth = 0
+            brackets = blocks = 0
             continue
 
         result = compile_source(source, "<REPL>")
@@ -102,13 +119,13 @@ def run_repl(
             if runtime_bag:
                 error(render_diagnostics(runtime_bag.sorted(), result.source))
             buffer.clear()
-            depth = 0
+            brackets = blocks = 0
             continue
 
-        if depth > 0 or _is_incomplete(result.diagnostics, len(source)):
+        if brackets > 0 or blocks > 0 or _is_incomplete(result.diagnostics, len(source)):
             continue  # wait for more input
 
         if result.diagnostics:
             error(render_diagnostics(result.diagnostics, result.source))
         buffer.clear()
-        depth = 0
+        brackets = blocks = 0

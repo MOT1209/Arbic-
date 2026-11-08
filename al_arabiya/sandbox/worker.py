@@ -210,6 +210,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     else:
         _apply_posix_limits(options.memory, options.timeout)
+        # Reads stay allowed (the program and its imports still load); network
+        # and filesystem writes are refused by the kernel from here on.
+        from al_arabiya.sandbox.limits_linux import install_guard
+
+        if not install_guard():
+            real_stderr.write(
+                "⚠️ حجب الملفات/الشبكة على مستوى OS مش متفعّل على النظام ده\n"
+            )
 
     from al_arabiya.cli.main import main as cli_main
 
