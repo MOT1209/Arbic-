@@ -132,7 +132,7 @@ pip install -e .
 | `compiler/parser` | **Pratt parser** (precedence climbing) + استرداد بعد الخطأ |
 | `compiler/ast` | nodes بـ `dataclass` + visitor |
 | `runtime/interpreter` | تنفيذ الشجرة + `Environment` (سلسلة Scopes جاهزة) |
-| `cli` | أوامر `run`/`check`/`repl` + كشف الإدخال الناقص |
+| `cli` | أوامر `run`/`check`/`build`/`test`/`format`/`repl` + كشف الإدخال الناقص |
 
 ---
 

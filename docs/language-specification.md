@@ -183,9 +183,10 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 
 مفيش: فئات/وراثة/واجهات، lambda، decorators، pattern matching، generics،
 `ثابت`، sets/tuples، شرائح، interpolation، member access، async/await،
-generators، formatter، debugger، playground، سجلّ حزم على الإنترنت،
-Python interop، IR، optimizer، وعزل تنفيذ (تصميمه في
-[sandbox-design.md](architecture/sandbox-design.md) بس مش منفّذ).
+generators، debugger، playground، سجلّ حزم على الإنترنت، Python interop، IR،
+optimizer. والمنسّق (`arabic format`) بيوحّد المسافات بس، وعزل التنفيذ
+(`--sandbox`) منفّذ جزئيًا: عملية عاملة وحدود وقت/ذاكرة/مخرجات، من غير حجب
+fs/net على مستوى OS ([sandbox-design.md](architecture/sandbox-design.md)).
 
 ## 12. المطابقة (Conformance)
 

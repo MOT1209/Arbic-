@@ -50,7 +50,7 @@
 | 6 | Runtime هجين 2.0 وVM | 5 | 🟡 VM بايت-كود موجودة (بدون IR) |
 | 7 | المكتبة القياسية 1.0 | 2، 4 | 🟡 مكتبة مدمجة واسعة، بدون وحدات stdlib رسمية |
 | 8 | مدير الحزم والأدوات | 7 | 🟡 مدير حزم محلّي؛ مفيش سجلّ/نشر |
-| 9 | أدوات المطوّر: formatter/LSP/debugger/VSCode | 4، 6 | 🟡 LSP موجود؛ formatter/debugger/إضافة VS Code لسه |
+| 9 | أدوات المطوّر: formatter/LSP/debugger/VSCode | 4، 6 | 🟡 LSP + formatter (مسافات) موجودين؛ debugger وإضافة VS Code لسه |
 | 10 | Playground والأمان والتوثيق والإصدار 2.0 | 6، 8، 9 | ⛔ لسه |
 
 ---

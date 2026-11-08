@@ -117,7 +117,7 @@
 |---|---|---|
 | LSP (`arabic lsp` / `arabic-lsp`) | 🟡 | تشخيصات + hover + إكمال + documentSymbol؛ full sync وإكمال ثابت |
 | إضافة VS Code جاهزة | ⛔ | فيه مثال ربط في `docs/tools/lsp.md` |
-| formatter | ✅ | مسافات فقط (سطور/تبويبات/فراغات)، مع تحقق tokens؛ مفيش إعادة تخطيط | |
+| formatter | ✅ | مسافات فقط (سطور/تبويبات/فراغات)، مع تحقق tokens؛ مفيش إعادة تخطيط |
 | debugger | ⛔ | |
 | playground | ⛔ | |
 
