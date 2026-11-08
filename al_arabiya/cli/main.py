@@ -44,6 +44,9 @@ _COMMANDS = frozenset(
         "حزمة",
         "init",
         "doctor",
+        "build",
+        "test",
+        "format",
         "version",
         "help",
     }
@@ -76,7 +79,36 @@ def _read_source(path: str) -> SourceFile | None:
         return None
 
 
-def cmd_run(path: str, use_vm: bool = False) -> int:
+def cmd_run(
+    path: str,
+    use_vm: bool = False,
+    *,
+    sandbox: bool = False,
+    timeout: float = 5.0,
+    memory_mb: int = 256,
+) -> int:
+    if sandbox:
+        from al_arabiya.sandbox import SandboxLimits, run_sandboxed
+
+        program = Path(path)
+        if not program.is_file():
+            sys.stderr.write(f"❌ مش لاقي الملف: {path}\n")
+            return 2
+        sandbox_result = run_sandboxed(
+            program,
+            SandboxLimits(timeout=timeout, memory_bytes=memory_mb * 1024 * 1024),
+            base_dir=program.resolve().parent,
+        )
+        sys.stdout.write(sandbox_result.stdout)
+        sys.stderr.write(sandbox_result.stderr)
+        if sandbox_result.limit == "output":
+            sys.stderr.write("⛔ البرنامج طبع فوق الحد المسموح\n")
+        elif sandbox_result.limit == "memory":
+            sys.stderr.write("⛔ العامل اتقفل (تعدّى حد الذاكرة أو واجه عطلًا)\n")
+        if sandbox_result.timed_out:
+            return 1
+        return sandbox_result.exit_code if sandbox_result.exit_code in (0, 1, 2) else 1
+
     source = _read_source(path)
     if source is None:
         return 2
@@ -333,6 +365,195 @@ def cmd_doctor(rest: list[str]) -> int:
     return 0
 
 
+class _UsageError(Exception):
+    """A bad command line (reported with exit code 2)."""
+
+
+def _bounded(value: str, option: str, low: float, high: float, *, integer: bool) -> float:
+    try:
+        number = int(value) if integer else float(value)
+    except ValueError:
+        raise _UsageError(f"{option} محتاج رقم، مش '{value}'") from None
+    if not low <= number <= high:
+        raise _UsageError(f"{option} لازم يكون بين {low:g} و{high:g}")
+    return number
+
+
+def _parse_run_args(rest: list[str]) -> tuple[bool, bool, float, int, list[str]]:
+    use_vm = False
+    sandbox = False
+    timeout = 5.0
+    memory = 256
+    files: list[str] = []
+    index = 0
+    while index < len(rest):
+        argument = rest[index]
+        if argument == "--vm":
+            use_vm = True
+        elif argument == "--sandbox":
+            sandbox = True
+        elif argument in ("--timeout", "--memory"):
+            if index + 1 >= len(rest):
+                raise _UsageError(f"{argument} محتاج قيمة")
+            value = rest[index + 1]
+            index += 1
+            if argument == "--timeout":
+                timeout = _bounded(value, argument, 0.1, 3600, integer=False)
+            else:
+                memory = int(_bounded(value, argument, 16, 4096, integer=True))
+        elif argument.startswith(("--timeout=", "--memory=")):
+            option, _, value = argument.partition("=")
+            if option == "--timeout":
+                timeout = _bounded(value, option, 0.1, 3600, integer=False)
+            else:
+                memory = int(_bounded(value, option, 16, 4096, integer=True))
+        elif argument.startswith("-"):
+            raise _UsageError(f"خيار مش معروف: {argument}")
+        else:
+            files.append(argument)
+        index += 1
+    return use_vm, sandbox, timeout, memory, files
+
+
+def _project_files(root: Path) -> list[Path]:
+    """Every ``.arb`` file in a project, minus the vendored ``حزم/`` folder."""
+    packages = root / "حزم"
+    return [path for path in sorted(root.rglob("*.arb")) if packages not in path.parents]
+
+
+def cmd_build(rest: list[str]) -> int:
+    positional = [argument for argument in rest if not argument.startswith("-")]
+    if len(positional) > 1:
+        sys.stderr.write("استخدام: arabic build [مجلد]\n")
+        return 2
+    root = Path(positional[0]) if positional else Path.cwd()
+    if not root.is_dir():
+        sys.stderr.write(f"❌ مش لاقي المجلد: {root}\n")
+        return 2
+    programs = _project_files(root)
+    if not programs:
+        sys.stderr.write("❌ مفيش ملفات .arb في المشروع\n")
+        return 2
+
+    failed = 0
+    for program in programs:
+        try:
+            source = SourceFile.from_path(str(program))
+        except OSError:
+            sys.stderr.write(f"❌ مش قادر أقرا: {program}\n")
+            failed += 1
+            continue
+        result = compile_source(source.text, str(program))
+        if result.diagnostics:
+            _emit_diagnostics(result.diagnostics, result.source)
+        if result.program is None or result.has_errors:
+            failed += 1
+            continue
+        type_bag = check_types(result.program)
+        if type_bag:
+            _emit_diagnostics(type_bag.sorted(), result.source)
+        if type_bag.has_errors:
+            failed += 1
+
+    if failed:
+        sys.stderr.write(f"❌ فشل بناء {failed} من {len(programs)} ملف\n")
+        return 1
+    print(f"✓ اتبنى المشروع: {len(programs)} ملف")
+    return 0
+
+
+def cmd_test(rest: list[str]) -> int:
+    positional = [argument for argument in rest if not argument.startswith("-")]
+    if len(positional) > 1:
+        sys.stderr.write("استخدام: arabic test [مجلد]\n")
+        return 2
+    root = Path(positional[0]) if positional else Path.cwd()
+    tests_dir = root / "اختبارات"
+    if not tests_dir.is_dir():
+        sys.stderr.write(f"❌ مفيش مجلد اختبارات في: {root}\n")
+        return 2
+    programs = sorted(tests_dir.rglob("*.arb"))
+    if not programs:
+        sys.stderr.write("❌ مجلد اختبارات مفيهوش ملفات .arb\n")
+        return 2
+
+    failed: list[str] = []
+    for program in programs:
+        name = program.relative_to(root).as_posix()
+        print(f"• {name}")
+        if cmd_run(str(program)) != 0:
+            failed.append(name)
+    if failed:
+        sys.stderr.write(f"❌ فشل {len(failed)} من {len(programs)} اختبار\n")
+        for name in failed:
+            sys.stderr.write(f"  - {name}\n")
+        return 1
+    print(f"✓ نجح {len(programs)} اختبار")
+    return 0
+
+
+def cmd_format(rest: list[str]) -> int:
+    from al_arabiya.formatter import format_source
+
+    unknown = [
+        argument
+        for argument in rest
+        if argument.startswith("-") and argument != "--check"
+    ]
+    if unknown:
+        sys.stderr.write(f"❌ خيار مش معروف: {unknown[0]}\n")
+        return 2
+    check_only = "--check" in rest
+    positional = [argument for argument in rest if not argument.startswith("-")]
+    if len(positional) > 1:
+        sys.stderr.write("استخدام: arabic format [مسار] [--check]\n")
+        return 2
+    target = Path(positional[0]) if positional else Path.cwd()
+    files: list[Path]
+    if target.is_file():
+        files = [target]
+    elif target.is_dir():
+        files = _project_files(target)
+    else:
+        sys.stderr.write(f"❌ مش لاقي المسار: {target}\n")
+        return 2
+
+    changed: list[Path] = []
+    broken = 0
+    for program in files:
+        try:
+            text = program.read_text(encoding="utf-8-sig")
+            source = SourceFile.from_path(str(program))
+        except OSError:
+            sys.stderr.write(f"❌ مش قادر أقرا: {program}\n")
+            broken += 1
+            continue
+        result = format_source(text)
+        if result.diagnostics:
+            _emit_diagnostics(result.diagnostics, source)
+            sys.stderr.write(f"⚠️ اتخطّى (فيه أخطاء): {program}\n")
+            broken += 1
+            continue
+        if result.changed:
+            changed.append(program)
+            if not check_only:
+                with open(program, "w", encoding="utf-8", newline="\n") as handle:
+                    handle.write(result.text)
+
+    if check_only and changed:
+        for program in changed:
+            print(f"محتاج تنسيق: {program}")
+        sys.stderr.write(f"❌ {len(changed)} ملف محتاج تنسيق\n")
+        return 1
+    if broken:
+        return 1
+    if not changed:
+        print("كل الملفات منسّقة بالفعل.")
+        return 0
+    print(f"اتنسّق {len(changed)} ملف.")
+    return 0
+
+
 def cmd_version() -> int:
     print(f"arabic {__version__} — AlArabiya / العربية")
     return 0
@@ -343,8 +564,11 @@ def cmd_help() -> int:
         "العربية (AlArabiya) — أمر التشغيل\n"
         "\n"
         "الاستخدام:\n"
-        "  arabic run <ملف.arb>    تشغيل ملف (أضف --vm لآلة البايت-كود)\n"
+        "  arabic run <ملف.arb>    تشغيل ملف (--vm لآلة البايت-كود، --sandbox لعزل التنفيذ)\n"
         "  arabic check <ملف.arb>  تحليل بدون تشغيل (بيطبع كل الأخطاء)\n"
+        "  arabic build [مجلد]    تحقق شامل من كل ملفات المشروع\n"
+        "  arabic test [مجلد]     يشغّل ملفات اختبارات/*.arb\n"
+        "  arabic format [مسار]   ينسّق المسافات (--check يعرض من غير ما يكتب)\n"
         "  arabic bench <ملف.arb>  مقارنة سرعة المفسّر بآلة البايت-كود\n"
         "  arabic repl             وضع التفاعل المباشر\n"
         "  arabic lsp              خادم المحرّر (Language Server عبر stdio)\n"
@@ -395,9 +619,18 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_init(rest)
     if name == "doctor":
         return cmd_doctor(rest)
+    if name == "build":
+        return cmd_build(rest)
+    if name == "test":
+        return cmd_test(rest)
+    if name == "format":
+        return cmd_format(rest)
 
-    use_vm = "--vm" in rest
-    files = [argument for argument in rest if not argument.startswith("-")]
+    try:
+        use_vm, sandbox, timeout, memory, files = _parse_run_args(rest)
+    except _UsageError as exc:
+        sys.stderr.write(f"❌ {exc}\n")
+        return 2
     if len(files) != 1:
         sys.stderr.write(f"❌ الأمر '{name}' محتاج اسم ملف واحد\n")
         return 2
@@ -405,4 +638,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(files[0])
     if name == "bench":
         return cmd_bench(files[0])
-    return cmd_run(files[0], use_vm=use_vm)
+    return cmd_run(
+        files[0],
+        use_vm=use_vm,
+        sandbox=sandbox,
+        timeout=timeout,
+        memory_mb=memory,
+    )

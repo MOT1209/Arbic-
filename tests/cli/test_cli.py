@@ -381,3 +381,69 @@ def test_repl_exit_words(exit_word):
         input_fn=make_input([exit_word]), out=out.append, err=lambda _text: None
     )
     assert code == 0
+
+
+# ------------------------------------------------------------ build / test
+
+
+def test_build_accepts_a_clean_project(tmp_path, capsys):
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "رئيسي.arb").write_text('اطبع "أ"\n', encoding="utf-8")
+    (tmp_path / "lib" / "مساعدة.arb").write_text(
+        "دالة م ()\n    رجّع 1\nخلاص\n", encoding="utf-8"
+    )
+    assert main(["build", str(tmp_path)]) == 0
+    assert "2 ملف" in capsys.readouterr().out
+
+
+def test_build_reports_a_broken_file(tmp_path, capsys):
+    (tmp_path / "خربان.arb").write_text("لو صح\n", encoding="utf-8")
+    assert main(["build", str(tmp_path)]) == 1
+    assert "E2004" in capsys.readouterr().err
+
+
+def test_build_reports_a_type_error(tmp_path, capsys):
+    (tmp_path / "أنواع.arb").write_text('خلي س : رقم = "نص"\n', encoding="utf-8")
+    assert main(["build", str(tmp_path)]) == 1
+    assert "E5001" in capsys.readouterr().err
+
+
+def test_build_skips_vendored_packages(tmp_path, capsys):
+    broken = tmp_path / "حزم" / "حزمة" / "خربان.arb"
+    broken.parent.mkdir(parents=True)
+    broken.write_text("لو صح\n", encoding="utf-8")
+    (tmp_path / "رئيسي.arb").write_text('اطبع "أ"\n', encoding="utf-8")
+    assert main(["build", str(tmp_path)]) == 0
+    assert "1 ملف" in capsys.readouterr().out
+
+
+def test_build_without_programs_is_a_usage_error(tmp_path, capsys):
+    assert main(["build", str(tmp_path)]) == 2
+    assert "مفيش ملفات" in capsys.readouterr().err
+
+
+def test_test_runs_every_program_under_ikhtibarat(tmp_path, capsys):
+    tests = tmp_path / "اختبارات"
+    tests.mkdir()
+    (tests / "أ.arb").write_text('اطبع "تمام"\n', encoding="utf-8")
+    (tests / "ب.arb").write_text("اطبع 2 زائد 2\n", encoding="utf-8")
+    assert main(["test", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "تمام" in out
+    assert "نجح 2 اختبار" in out
+
+
+def test_test_reports_the_failing_files(tmp_path, capsys):
+    tests = tmp_path / "اختبارات"
+    tests.mkdir()
+    (tests / "سليم.arb").write_text("اطبع 1\n", encoding="utf-8")
+    (tests / "فاشل.arb").write_text("اطبع 1 / 0\n", encoding="utf-8")
+    assert main(["test", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert "E4002" in captured.err
+    assert "فشل 1 من 2" in captured.err
+
+
+def test_test_requires_a_tests_folder(tmp_path, capsys):
+    assert main(["test", str(tmp_path)]) == 2
+    assert "اختبارات" in capsys.readouterr().err

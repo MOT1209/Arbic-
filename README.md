@@ -31,6 +31,7 @@ arabic run examples/hello.arb
 - **مكتبة مدمجة** واسعة: `طول`، `نوع`، `مدى`، `مجموع`، `رتب`، `قسّم`، `جذر` …
 - **تحكّم في الحلقات**: `اكسر` و`كمل` · والقيمة الفارغة `فراغ`
 - **رسائل أخطاء مصرية** بأكواد مرجعية (`E1001`، `E2002`…) ونسب للكود الأصلي
+- **عزل تنفيذ اختياري**: `--sandbox` بيشغّل البرنامج في عملية عاملة منفصلة بحدود وقت/ذاكرة/مخرجات ومدخلات مقفولة، مع parity كامل مع التشغيل المحلي
 - **UTF-8 من أول حرف لآخر** — الـ positions والـ spans محسوبة على الحروف العربية
 
 ---
@@ -47,7 +48,11 @@ pip install -e .
 |---|---|
 | `arabic run مثال.arb` | تشغيل ملف (أو `arabic مثال.arb` اختصارًا) |
 | `arabic check مثال.arb` | فحص بدون تشغيل — أخطاء نحوية + فحص أنواع ثابت |
+| `arabic build [مجلد]` | تحقق شامل من كل ملفات المشروع (بدون `حزم/`) |
+| `arabic test [مجلد]` | يشغّل كل `اختبارات/**/*.arb` ويفشل لو واحد فشل |
+| `arabic format [مسار] [--check]` | ينسّق المسافات؛ `--check` يعرض من غير ما يكتب |
 | `arabic run --vm مثال.arb` | تشغيل عبر آلة البايت-كود (أسرع للنواة) |
+| `arabic run --sandbox مثال.arb` | تشغيل داخل عامل منفصل بحدود وقت/ذاكرة/مخرجات |
 | `arabic bench مثال.arb` | مقارنة سرعة المفسّر بآلة البايت-كود |
 | `arabic packages install` | تثبيت الحزم من سجلّ محلّي (في `حزم/`) |
 | `arabic init [مجلد]` | يعمل `حزمة.json` و`رئيسي.arb` من غير ما يلمس ملفات موجودة |
@@ -97,6 +102,8 @@ pip install -e .
 
 ## 📚 التوثيق
 
+- [`docs/language-specification.md`](docs/language-specification.md) — المواصفة المعيارية (نحوي/دلالات/حدود المطابقة)
+- [`docs/migration-2.0.md`](docs/migration-2.0.md) — دليل الترقية والكسور السلوكية المعروفة
 - [`docs/language/syntax.md`](docs/language/syntax.md) — قواعد اللغة والقواعد النحوية
 - [`docs/language/stdlib.md`](docs/language/stdlib.md) — المكتبة المدمجة (الدوال الجاهزة)
 - [`examples/types.arb`](examples/types.arb) — تعليقات الأنواع والفحص الثابت (`arabic check`)
@@ -132,7 +139,7 @@ pip install -e .
 ## 🧪 الاختبارات
 
 ```bash
-pytest              # 571 اختبار (+1 skip على Windows لاختبار symlink)
+pytest              # 599 اختبار (+2 skip على Windows: symlink وحد الذاكرة)
 ruff check .        # الـ lint
 mypy                # التحقق الصارم للأنواع
 python tools/check.py   # الثلاثة مع بعض

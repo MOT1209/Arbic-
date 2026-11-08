@@ -35,8 +35,8 @@
 | TD-16 | تكرار قراءة الملف + `type: ignore` في CLI | P3 | ✅ اتصلح |
 | TD-17 | `span` القوسين لا يشملهما | P3 | ✅ اتصلح |
 | TD-18 | لا SECURITY.md / CONTRIBUTING.md | P2 | ✅ مواصفة + دليل ترحيل |
-| TD-19 | لا `arabic build/init/test/format/doctor` | P2 | 🟡 `init` و`doctor` اتنفذوا |
-| TD-20 | لا عزل تنفيذ للـ playground/interop موثّق | P1 (قبل التنفيذ) | 🟡 تصميم معتمد، تنفيذ لسه |
+| TD-19 | لا `arabic build/init/test/format/doctor` | P2 | ✅ الخمسة اتنفذوا |
+| TD-20 | لا عزل تنفيذ للـ playground/interop موثّق | P1 (قبل التنفيذ) | 🟡 عامل معزول + حدود؛ حجب OS لسه |
 | TD-21 | الإصدار `0.1.0` مقابل هدف «2.0» بلا سياسة إصدارات | P3 | ✅ ADR-01 |
 
 **حالة السداد (2026-11-08):**
@@ -51,8 +51,8 @@
 - **TD-18/21:** ✅ — مواصفة رسمية + دليل ترحيل + سياسة إصدارات.
 - **TD-09:** 🟡 — فحص أنواع تدريجي في `check` بس، وده القرار الموثّق في المواصفة §8.
 - **TD-11:** 🟡 — الاختبارات الحدّية اتضافت، لكن منطق الاستمرارية لسه heuristic (موثّق كقيد).
-- **TD-19:** 🟡 — `init` و`doctor` اتنفذوا؛ `build`/`test`/`format` لسه.
-- **TD-20:** 🟡 — تصميم العزل مكتوب ومعتمد؛ التنفيذ ممنوع يسبق تصميم أحدث منه.
+- **TD-19:** ✅ — `init`، `doctor`، `build`، `test`، `format` كلهم موجودين ومختبَرين.
+- **TD-20:** 🟡 — العامل المعزول اتنفذ (عملية منفصلة، rlimit/Job Object، مهلة، سقف مخرجات، stdin مقفول)، وحجب fs/net على مستوى OS لسه.
 
 ---
 
@@ -316,7 +316,7 @@ push_log.txt      0
 
 **المعالجة:** `init`/`build`/`test`/`format` تحتاج مشروعًا وformatter وtest runner — أي Phase 8/9.
 
-**الحالة: 🟡** — `arabic init [مجلد]` و`arabic doctor [مجلد]` اتنفذوا مع اختبارات (إنشاء غير متلف، فحص بيئة/بيان/قفل/سجلّ). `build`/`test`/`format` لسه محتاجين تصميم formatter وtest runner.
+**الحالة: ✅** — `init` و`doctor` و`build` (تحقق شامل من كل ملفات المشروع) و`test` (يشغّل `اختبارات/**/*.arb`) و`format` (مسافات فقط مع تحقق tokens) كلهم منفذين ومختبَرين.
 
 ---
 
@@ -326,7 +326,7 @@ push_log.txt      0
 
 **المعالجة:** تصميم عزل (subprocess/container + resource limits + filesystem/network restrictions) قبل كتابة أول سطر interop. لا يُنفَّذ allowlist فقط كضمان أمني.
 
-**الحالة: 🟡** — التصميم مكتوب في `docs/architecture/sandbox-design.md` (نموذج تهديد + قيود OS لكل منصة + اختبارات قبول)، ومفيش تنفيذ. القاعدة سارية: أي interop/playground ممنوع قبل تنفيذه.
+**الحالة: 🟡** — التصميم في `docs/architecture/sandbox-design.md` والتنفيذ في `al_arabiya/sandbox/`: عملية عاملة منفصلة، `RLIMIT_AS/CPU/FSIZE/NOFILE` على POSIX، Job Object على Windows، مهلة حائط، سقف مخرجات، stdin مغلق، وبيئة مصغّرة. حجب الملفات/الشبكة على مستوى OS (seccomp/AppContainer) لسه مطلوب قبل interop.
 
 ---
 

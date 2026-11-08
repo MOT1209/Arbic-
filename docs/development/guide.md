@@ -28,9 +28,11 @@ al_arabiya/
 │   └── frontend.py        # compile_source() → FrontendResult
 ├── runtime/
 │   └── interpreter/       # Environment, Interpreter
+├── formatter.py            # منسّق مسافات محافظ (بدون إعادة تخطيط)
+├── sandbox/                # عامل معزول: worker.py + حدود OS
 └── cli/                   # main.py (أوامر) + repl.py (REPL)
 legacy/masry.py            # المترجم القديم (للرجوعية)
-tests/                     # 571 اختبار (unit + integration + regression + contracts + fuzz + property + security)
+tests/                     # 599 اختبار (unit + integration + regression + contracts + fuzz + property + security + sandbox)
 ```
 
 ---
@@ -39,7 +41,11 @@ tests/                     # 571 اختبار (unit + integration + regression +
 
 ```bash
 arabic run مثال.arb           # تشغيل
+arabic run --sandbox مثال.arb # تشغيل داخل عامل معزول
 arabic check مثال.arb         # فحص بدون تشغيل
+arabic build                  # تحقق من كل ملفات المشروع
+arabic test                   # يشغّل اختبارات/*.arb
+arabic format . --check       # منسّق المسافات (معاينة)
 arabic repl                   # تفاعلي
 python -m tools.bench          # قياس المفسّر مقابل VM (مش جزء من البوابة)
 pytest                        # كل الاختبارات
@@ -59,7 +65,7 @@ mypy                          # أنواع صارمة (strict)
 4. **عقدة AST** → `dataclass` جديد في `ast/nodes.py` + زر في `visit_*` بالـ interpreter (وأي دوال `check_*`).
 5. **كود خطأ** → أضف في `ErrorCode` (بنمط `E####`) واستخدمه.
 
-بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **571/571** واختبارات الرجوعية (goldens) مطابقة.
+بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **599/599** واختبارات الرجوعية (goldens) مطابقة.
 
 ---
 
