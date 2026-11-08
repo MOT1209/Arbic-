@@ -130,7 +130,7 @@ pip install -e .
 ## 🧪 الاختبارات
 
 ```bash
-pytest              # 509 اختبار
+pytest              # 523 اختبار
 ruff check .        # الـ lint
 mypy                # التحقق الصارم للأنواع
 python tools/check.py   # الثلاثة مع بعض

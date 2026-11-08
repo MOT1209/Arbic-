@@ -24,13 +24,13 @@
 | TD-05 | هوية/روابط مستودع قديمة + README تالف | P1 | Phase 1 |
 | TD-06 | لا دوال ولا استدعاء ولا `رجّع` | P1 | Phase 2 |
 | TD-07 | لا مجموعات بيانات (قائمة/قاموس/صف) | P1 | Phase 2 |
-| TD-08 | لا وحدات ولا `استورد` | P2 | Phase 2 |
+| TD-08 | لا وحدات ولا `استورد` | P2 | Phase 2 — 🟡 منع traversal اتنفذ |
 | TD-09 | لا semantic analysis ولا type checker | P2 | Phase 4 |
 | TD-10 | `كرر` يقبل سالبًا وكسريًا بصمت | P2 | ✅ اتصلح |
 | TD-11 | REPL heuristic هش | P2 | Phase 1 |
 | TD-12 | نطاق عالمي واحد (قرار موروث) | P2 | Phase 2 (ADR-02) |
-| TD-13 | لا package manager أصلًا (ليس «إصلاح ثغرات») | P1 | Phase 8 |
-| TD-14 | لا fuzz/property/security tests | P2 | 🟡 fuzz حتمي في `tests/fuzz`؛ property/security لسه |
+| TD-13 | لا package manager أصلًا (ليس «إصلاح ثغرات») | P1 | Phase 8 — 🟡 تحقق أسماء الحزم اتنفذ |
+| TD-14 | لا fuzz/property/security tests | P2 | 🟡 fuzz حتمي + اختبارات أمان للمسارات؛ property لسه |
 | TD-15 | لا benchmarks | P3 | 🟡 `tools/bench.py`؛ مش مربوط بـ CI |
 | TD-16 | تكرار قراءة الملف + `type: ignore` في CLI | P3 | 🟡 جزء منه |
 | TD-17 | `span` القوسين لا يشملهما | P3 | Phase 2 |
@@ -181,6 +181,8 @@ push_log.txt      0
 
 **المعالجة (Phase 2/3):** resolver للمسارات، منع path traversal، دورة استيراد، أسماء مؤهلة.
 
+**الحالة: 🟡** — الوحدات و`استورد` و`باسم` و`من ... استورد` اتنفذوا، وكشف الدورة شغّال. منع path traversal اتنفذ: المسارات المطلقة واللي بتطلع بـ `..` بترفض بـ `E4016`. الأسماء المؤهلة لسه.
+
 ---
 
 ### TD-09 — لا تحليل دلالي/أنواع (P2)
@@ -236,6 +238,8 @@ push_log.txt      0
 
 **المعالجة (Phase 8):** بناء من الصفر باستخراج آمن (رفض `..`، المسارات المطلقة، symlink escapes)، checksums، lockfile، resolver بالتراجع، وسياسة تشغيل سكربتات صريحة.
 
+**الحالة: 🟡** — مدير حزم ملفي محلي (resolve/install/lockfile) اتنفذ، وأسماء الحزم والاعتماديات اللي فيها `..` أو `/` أو `\\` أو `:` بترفض قبل أي حذف/نسخ. checksums وsymlink checks وتشغيل سكربتات لسه.
+
 ---
 
 ### TD-14 — لا اختبارات خصومية (P2)
@@ -243,6 +247,8 @@ push_log.txt      0
 **الدليل:** لا `tests/security/`، لا Hypothesis، لا fuzz. أقصى ما يوجد: `test_invalid_number_reports_error` وحالات أخطاء يدوية.
 
 **المعالجة:** fuzz للـ lexer/parser، property tests للـ round-trip، security tests للاستيراد والحزم، في Phase 1 وPhase 10.
+
+**الحالة: 🟡** — `tests/fuzz` (85 حالة حتمية) + حالات أمان للاستيراد (`tests/modules`، `tests/vm/test_vm_modules.py`) وأسماء الحزم (`tests/packages`). property tests وأنظمة ملفات غير مصرّح بها لسه.
 
 ---
 

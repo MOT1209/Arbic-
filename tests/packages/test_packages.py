@@ -227,3 +227,54 @@ def test_cli_install_needs_registry(tmp_path: Path, capsys, monkeypatch):
     project.mkdir()
     write_manifest(project, {})
     assert main(["packages", "install", str(project)]) == 2
+
+
+# ------------------------------------------------------- unsafe package names
+
+
+def write_raw_manifest(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "bad_name",
+    ["..", ".", "../خارج", "أ/ب", "أ" + "\\" + "ب", "C:evil", ""],
+)
+def test_manifest_rejects_unsafe_dependency_names(tmp_path: Path, bad_name: str):
+    manifest_path = tmp_path / manager.MANIFEST_NAME
+    write_raw_manifest(
+        manifest_path,
+        {"الاسم": "تطبيق", "الإصدار": "1.0.0", "الاعتماديات": {bad_name: "*"}},
+    )
+    with pytest.raises(PackageError):
+        manager.read_manifest(manifest_path)
+
+
+def test_manifest_rejects_unsafe_package_name(tmp_path: Path):
+    manifest_path = tmp_path / manager.MANIFEST_NAME
+    write_raw_manifest(
+        manifest_path, {"الاسم": "../خارج", "الإصدار": "1.0.0"}
+    )
+    with pytest.raises(PackageError):
+        manager.read_manifest(manifest_path)
+
+
+def test_registry_path_rejects_traversal_name(tmp_path: Path):
+    with pytest.raises(PackageError):
+        Registry(tmp_path).path("..", Version(1, 0, 0))
+
+
+def test_install_rejects_traversal_without_touching_the_project(tmp_path: Path):
+    project = tmp_path / "مشروع"
+    project.mkdir()
+    (project / "مهم.txt").write_text("متلمسش", encoding="utf-8")
+    write_raw_manifest(
+        project / manager.MANIFEST_NAME,
+        {"الاسم": "تطبيق", "الإصدار": "1.0.0", "الاعتماديات": {"..": "*"}},
+    )
+
+    with pytest.raises(PackageError):
+        manager.install(project, Registry(tmp_path / "سجل"))
+
+    assert (project / "مهم.txt").is_file()
+    assert not (tmp_path / manager.PACKAGES_DIR).exists()

@@ -373,7 +373,7 @@ class Interpreter(ASTVisitor):
 
     def visit_import_statement(self, node: ImportStatement) -> None:
         base = self.base_dir if self.base_dir is not None else os.getcwd()
-        abs_path = self.loader.locate(node.path, base)
+        abs_path = self.loader.locate(node.path, base, node.path_span)
         module_env = self.loader.load(abs_path, node.path_span)
         exports = module_exports(module_env)
 

@@ -104,3 +104,38 @@ def test_module_is_executed_once(tmp_path: Path):
     )
     # Side-effect print happens once (cached), then the value is visible.
     assert run_file(main) == "تحميل\n1"
+
+
+def test_import_cannot_escape_the_project_directory(tmp_path: Path):
+    project = tmp_path / "مشروع"
+    project.mkdir()
+    write(tmp_path / "سر.arb", 'اطبع "اتنفذ"\nخلي س = 1')
+    main = write(project / "رئيسي.arb", 'اطبع "قبل"\nاستورد "../سر"')
+
+    lines: list[str] = []
+    result = compile_source(main.read_text(encoding="utf-8"), str(main))
+    assert result.program is not None
+    with pytest.raises(ArabiyaRuntimeError) as excinfo:
+        Interpreter(
+            diagnostics=DiagnosticBag(), write=lines.append, base_dir=str(project)
+        ).run(result.program)
+
+    assert excinfo.value.diagnostic.code == ErrorCode.IMPORT_ERROR
+    assert lines == ["قبل"]  # the file outside the project never ran
+
+
+def test_absolute_import_path_is_rejected(tmp_path: Path):
+    outside = write(tmp_path / "خارجي.arb", "خلي قيمة = 1")
+    main = write(tmp_path / "م.arb", f'استورد "{outside.as_posix()}"')
+
+    error = error_from_file(main)
+    assert error.diagnostic.code == ErrorCode.IMPORT_ERROR
+    assert "جوّه مجلد المشروع" in error.diagnostic.message
+
+
+def test_import_from_a_subdirectory_still_works(tmp_path: Path):
+    library = tmp_path / "مكتبة"
+    library.mkdir()
+    write(library / "أدوات.arb", "خلي قيمة = 7")
+    main = write(tmp_path / "م.arb", 'استورد "مكتبة/أدوات"\nاطبع قيمة')
+    assert run_file(main) == "7"

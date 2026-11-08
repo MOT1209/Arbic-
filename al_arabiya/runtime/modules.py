@@ -24,6 +24,16 @@ __all__ = ["ModuleLoader", "module_exports"]
 _BUILTIN_NAMES = frozenset(builtin.name for builtin in BUILTINS)
 
 
+def _is_inside(path: str, directory: str) -> bool:
+    """Is ``path`` within ``directory`` (case-insensitive where the OS is)?"""
+    root = os.path.normcase(os.path.abspath(directory))
+    target = os.path.normcase(os.path.abspath(path))
+    try:
+        return os.path.commonpath([root, target]) == root
+    except ValueError:  # different drives on Windows
+        return False
+
+
 def module_exports(module_env: Environment) -> dict[str, Value]:
     """The names a module makes available (its top-level defs, minus builtins)."""
     return {
@@ -41,7 +51,7 @@ class ModuleLoader:
         self._cache: dict[str, Environment] = {}
         self._loading: set[str] = set()
 
-    def locate(self, name: str, base_dir: str) -> str:
+    def locate(self, name: str, base_dir: str, span: Span) -> str:
         """Resolve an import name to an absolute path.
 
         A sibling ``.arb`` file wins; otherwise an installed package in the
@@ -49,9 +59,20 @@ class ModuleLoader:
         vendored package can import its own dependencies from the project's
         ``حزم/``).  Returns the sibling candidate when nothing exists, so
         :meth:`load` reports the usual MODULE_NOT_FOUND.
+
+        Names that would leave the importing file's directory (absolute paths,
+        or ``..`` segments that climb out) are refused, so a program cannot
+        read files elsewhere on disk through ``استورد``.
         """
         raw = name if name.endswith(".arb") else name + ".arb"
         direct = os.path.normpath(os.path.join(base_dir, raw))
+        if os.path.isabs(raw) or not _is_inside(direct, base_dir):
+            raise self._error(
+                ErrorCode.IMPORT_ERROR,
+                f"اسم الملف المستورد لازم يفضل جوّه مجلد المشروع: '{name}'",
+                span,
+                "استخدم اسم ملف جوّه المشروع، أو حزمة متثبتة في مجلد 'حزم'",
+            )
         if os.path.isfile(direct):
             return direct
         bare = name[:-4] if name.endswith(".arb") else name

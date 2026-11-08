@@ -394,7 +394,7 @@ class VM:
 
     def _do_import(self, spec: ImportSpec, span: Span | None) -> None:
         base = self.base_dir if self.base_dir is not None else os.getcwd()
-        abs_path = self.loader.locate(spec.path, base)
+        abs_path = self.loader.locate(spec.path, base, span if span is not None else _ZERO_SPAN)
         module_env = self.loader.load(abs_path, span if span is not None else _ZERO_SPAN)
         exports = module_exports(module_env)
 

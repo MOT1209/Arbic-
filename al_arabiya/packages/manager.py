@@ -86,12 +86,26 @@ class Manifest:
     dependencies: dict[str, str] = field(default_factory=dict)
 
 
+def _validate_name(name: str, source: str) -> str:
+    """Reject names that could point outside a package directory."""
+    if (
+        not name
+        or name in (".", "..")
+        or name[0] in "/\\"
+        or any(ch in name for ch in "/\\:")
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in name)
+    ):
+        raise PackageError(f"اسم حزمة غير صالح في '{source}': '{name}'")
+    return name
+
+
 def _parse_manifest_data(data: object, source: str) -> Manifest:
     if not isinstance(data, dict):
         raise PackageError(f"ملف الحزمة '{source}' لازم يكون كائن JSON")
     name = data.get(_KEY_NAME)
     if not isinstance(name, str) or not name:
         raise PackageError(f"ملف الحزمة '{source}' محتاج '{_KEY_NAME}' نصي")
+    _validate_name(name, source)
     raw_version = data.get(_KEY_VERSION, "0.0.0")
     if not isinstance(raw_version, str):
         raise PackageError(f"'{_KEY_VERSION}' في '{source}' لازم يكون نص")
@@ -102,7 +116,7 @@ def _parse_manifest_data(data: object, source: str) -> Manifest:
     for dep_name, constraint in raw_deps.items():
         if not isinstance(dep_name, str) or not isinstance(constraint, str):
             raise PackageError(f"اعتماد غير صالح في '{source}'")
-        dependencies[dep_name] = constraint
+        dependencies[_validate_name(dep_name, source)] = constraint
     return Manifest(name, Version.parse(raw_version), dependencies)
 
 
@@ -125,7 +139,7 @@ class Registry:
         self.root = root
 
     def available_versions(self, name: str) -> list[Version]:
-        package_dir = self.root / name
+        package_dir = self.root / _validate_name(name, str(self.root))
         if not package_dir.is_dir():
             return []
         versions: list[Version] = []
@@ -138,7 +152,7 @@ class Registry:
         return sorted(versions)
 
     def path(self, name: str, version: Version) -> Path:
-        return self.root / name / str(version)
+        return self.root / _validate_name(name, str(self.root)) / str(version)
 
     def manifest(self, name: str, version: Version) -> Manifest | None:
         manifest_path = self.path(name, version) / MANIFEST_NAME

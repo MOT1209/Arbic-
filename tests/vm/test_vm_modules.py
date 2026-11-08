@@ -83,6 +83,16 @@ def test_vm_selective_import_unknown_name(tmp_path: Path):
     assert excinfo.value.diagnostic.code == ErrorCode.IMPORT_ERROR
 
 
+def test_vm_import_cannot_escape_the_project_directory(tmp_path: Path):
+    project = tmp_path / "مشروع"
+    project.mkdir()
+    (tmp_path / "سر.arb").write_text('اطبع "اتنفذ"', encoding="utf-8")
+    program = _program('استورد "../سر"', "main.arb")
+    with pytest.raises(ArabiyaRuntimeError) as excinfo:
+        VM(write=lambda _t: None, base_dir=str(project)).run(compile_program(program))
+    assert excinfo.value.diagnostic.code == ErrorCode.IMPORT_ERROR
+
+
 def test_vm_import_cycle_is_detected(tmp_path: Path):
     (tmp_path / "x.arb").write_text('استورد "y"', encoding="utf-8")
     (tmp_path / "y.arb").write_text('استورد "x"', encoding="utf-8")
