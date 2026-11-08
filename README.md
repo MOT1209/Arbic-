@@ -110,6 +110,7 @@ pip install -e .
 - [`docs/tools/lsp.md`](docs/tools/lsp.md) — خادم المحرّر (LSP) وربطه بـ VS Code
 - [`docs/architecture/bytecode-vm.md`](docs/architecture/bytecode-vm.md) — آلة البايت-كود والأداء
 - [`docs/tools/packages.md`](docs/tools/packages.md) — مدير الحزم المحلّي
+- [`docs/tools/debugger.md`](docs/tools/debugger.md) — مصحّح DAP وإضافة VS Code
 - [`docs/development/guide.md`](docs/development/guide.md) — إعداد بيئة التطوير والاختبارات
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — قواعد المساهمة والبوابات المطلوبة
 - [`SECURITY.md`](SECURITY.md) — الإبلاغ عن الثغرات وحدود العزل الحالية
@@ -132,6 +133,7 @@ pip install -e .
 | `compiler/parser` | **Pratt parser** (precedence climbing) + استرداد بعد الخطأ |
 | `compiler/ast` | nodes بـ `dataclass` + visitor |
 | `runtime/interpreter` | تنفيذ الشجرة + `Environment` (سلسلة Scopes جاهزة) |
+| `debugger` | خادم DAP فوق المفسّر: نقاط توقّف، خطوة، مكدّس، متغيرات |
 | `cli` | أوامر `run`/`check`/`build`/`test`/`format`/`repl` + كشف الإدخال الناقص |
 
 ---
@@ -139,7 +141,7 @@ pip install -e .
 ## 🧪 الاختبارات
 
 ```bash
-pytest              # 608 اختبار (+2 skip؛ على Windows 4: symlink، حد الذاكرة، واختبارا seccomp)
+pytest              # 610 اختبار (+2 skip؛ على Windows 608/4: symlink، حد الذاكرة، seccomp)
 ruff check .        # الـ lint
 mypy                # التحقق الصارم للأنواع
 python tools/check.py   # الثلاثة مع بعض

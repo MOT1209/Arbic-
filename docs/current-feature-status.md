@@ -4,7 +4,7 @@
 
 > **آخر تحقق:** 2026-11-08، بعد تنفيذ المراحل 2–8 (دوال، مجموعات، وحدات، استثناءات، فحص أنواع، LSP، VM، مدير حزم) وإصلاح `كرر`.
 > **المواصفة:** `docs/language-specification.md` · **الترحيل:** `docs/migration-2.0.md`
-> **القاعدة:** مفيش ميزة مصنّفة «منفّذة» إلا ولها كود + اختبار ناجح. البوابات الحالية: `608 passed, 2 skipped` في CI (وعلى Windows `606 passed, 4 skipped`: symlink، حد الذاكرة، واختبارا seccomp) · `ruff` نضيف · `mypy strict` على 44 ملف · كل `examples/*.arb` بتعدّي.
+> **القاعدة:** مفيش ميزة مصنّفة «منفّذة» إلا ولها كود + اختبار ناجح. البوابات الحالية: `610 passed, 2 skipped` في CI (وعلى Windows `608 passed, 4 skipped`: symlink، حد الذاكرة، واختبارا seccomp) · `ruff` نضيف · `mypy strict` على 46 ملف · كل `examples/*.arb` بتعدّي.
 
 ## دليل الرموز
 
@@ -116,9 +116,9 @@
 | الأداة | الحالة | ملاحظات |
 |---|---|---|
 | LSP (`arabic lsp` / `arabic-lsp`) | 🟡 | تشخيصات + hover + إكمال + documentSymbol؛ full sync وإكمال ثابت |
-| إضافة VS Code جاهزة | ⛔ | فيه مثال ربط في `docs/tools/lsp.md` |
+| إضافة VS Code جاهزة | 🟡 | `editors/vscode` (package.json + extension.js) — مصدر جاهز، مش متجرّب على VS Code هنا |
 | formatter | ✅ | مسافات فقط (سطور/تبويبات/فراغات)، مع تحقق tokens؛ مفيش إعادة تخطيط |
-| debugger | ⛔ | |
+| debugger | ✅ | `arabic debug` = DAP على stdio: نقاط توقّف، next/stepIn/stepOut، مكدّس، متغيرات؛ المفسّر بس (مش VM) |
 | playground | ⛔ | |
 
 ## 9. CLI
@@ -131,6 +131,7 @@
 | `arabic run --vm` · `arabic bench` | ✅ |
 | `arabic repl` / `arabic` | ✅ |
 | `arabic lsp` | ✅ |
+| `arabic debug <ملف>` | ✅ خادم DAP على stdio (نقاط توقّف/خطوة/مكدّس/متغيرات) |
 | `arabic packages install\|list` · `arabic حزمة` | ✅ |
 | `arabic version` · `arabic help` | ✅ |
 | `arabic init [مجلد]` | ✅ |
@@ -145,7 +146,7 @@
 
 | البند | الحالة |
 |---|---|
-| اختبارات وحدة لكل طبقة | ✅ 608 اختبار |
+| اختبارات وحدة لكل طبقة | ✅ 610 اختبار (608 على Windows) |
 | اختبارات تكامل + رجعية (goldens من `legacy/masry.py`) | ✅ |
 | اختبارات عقود (أكواد/أوامر/خروج) | ✅ |
 | parity بين المفسّر والـ VM | ✅ (`tests/vm`) |
@@ -167,6 +168,6 @@
 
 ## 12. ما يجب ألا يفترضه أحد
 
-غير موجود رغم أنه في خارطة 2.0: الفئات والوراثة والواجهات، lambda، decorators، pattern matching، generics، union/optional types، `ثابت`، `استورد` للمكتبة القياسية، sets/tuples، الشرائح، interpolation، member access، async/await، generators، debugger، playground، سجلّ حزم على الإنترنت، Python interop، IR، optimizer. (المنسّق موجود لكنه مسافات فقط، والعازل جزئي كما في §11.)
+غير موجود رغم أنه في خارطة 2.0: الفئات والوراثة والواجهات، lambda، decorators، pattern matching، generics، union/optional types، `ثابت`، sets/tuples، الشرائح، interpolation، member access، async/await، generators، playground، سجلّ حزم على الإنترنت، Python interop، IR، optimizer. (المنسّق موجود لكنه مسافات فقط، والعازل جزئي كما في §11، والمصحّح موجود للمفسّر بس، وإضافة VS Code مصدر بدون تجربة.)
 
 </div>

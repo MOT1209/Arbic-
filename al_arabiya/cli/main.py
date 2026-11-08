@@ -38,6 +38,7 @@ _COMMANDS = frozenset(
         "run",
         "check",
         "bench",
+        "debug",
         "repl",
         "lsp",
         "packages",
@@ -556,6 +557,24 @@ def cmd_format(rest: list[str]) -> int:
     return 0
 
 
+def cmd_debug(rest: list[str]) -> int:
+    """Run the DAP debug adapter on stdio (VS Code and other DAP clients)."""
+    program: str | None = None
+    for argument in rest:
+        if argument == "--stdio":
+            continue
+        if argument.startswith("-"):
+            sys.stderr.write(f"❌ خيار غير معروف: {argument}\n")
+            return 2
+        if program is not None:
+            sys.stderr.write("❌ الأمر 'debug' بياخد ملف واحد بس\n")
+            return 2
+        program = argument
+    from al_arabiya.debugger.session import main as debug_main
+
+    return debug_main(program)
+
+
 def cmd_version() -> int:
     print(f"arabic {__version__} — AlArabiya / العربية")
     return 0
@@ -572,6 +591,7 @@ def cmd_help() -> int:
         "  arabic test [مجلد]     يشغّل ملفات اختبارات/*.arb\n"
         "  arabic format [مسار]   ينسّق المسافات (--check يعرض من غير ما يكتب)\n"
         "  arabic bench <ملف.arb>  مقارنة سرعة المفسّر بآلة البايت-كود\n"
+        "  arabic debug <ملف.arb>  خادم تصحيح (DAP) على stdio\n"
         "  arabic repl             وضع التفاعل المباشر\n"
         "  arabic lsp              خادم المحرّر (Language Server عبر stdio)\n"
         "  arabic packages install تثبيت الحزم من السجلّ المحلّي (في حزم/)\n"
@@ -605,6 +625,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     name, rest = args[0], args[1:]
+    if name == "debug":
+        return cmd_debug(rest)
     if name == "repl":
         return run_repl()
     if name == "lsp":

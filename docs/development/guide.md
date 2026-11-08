@@ -31,9 +31,10 @@ al_arabiya/
 ├── formatter.py            # منسّق مسافات محافظ (بدون إعادة تخطيط)
 ├── sandbox/                # عامل معزول: worker.py + حدود OS + limits_linux.py (seccomp)
 ├── stdlib/                 # وحدات قياسية بلغة العربية: نصوص/قوائم/رياضيات
+├── debugger/               # خادم DAP + محرّك تتبّع فوق المفسّر
 └── cli/                   # main.py (أوامر) + repl.py (REPL)
 legacy/masry.py            # المترجم القديم (للرجوعية)
-tests/                     # 608 اختبار (unit + integration + regression + contracts + fuzz + property + security + sandbox)
+tests/                     # 610 اختبار على Linux / 608 على Windows (unit + integration + regression + contracts + fuzz + property + security + sandbox + debugger)
 ```
 
 ---
@@ -66,7 +67,7 @@ mypy                          # أنواع صارمة (strict)
 4. **عقدة AST** → `dataclass` جديد في `ast/nodes.py` + زر في `visit_*` بالـ interpreter (وأي دوال `check_*`).
 5. **كود خطأ** → أضف في `ErrorCode` (بنمط `E####`) واستخدمه.
 
-بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **608/608** واختبارات الرجوعية (goldens) مطابقة.
+بعد أي تعديل شغّل `python tools/check.py` — لازم تفضل كل الاختبارات ناجحة (610 على Linux / 608 على Windows) واختبارات الرجوعية (goldens) مطابقة.
 
 ---
 

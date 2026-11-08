@@ -1,0 +1,45 @@
+{
+  "name": "arabiya-debug",
+  "displayName": "AlArabiya Debugger",
+  "description": "تصحيح برامج العربية (AlArabiya) من VS Code",
+  "version": "0.1.0",
+  "publisher": "al-arabiya",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Debuggers"],
+  "activationEvents": ["onDebugResolve:arabic"],
+  "main": "./extension.js",
+  "contributes": {
+    "debuggers": [
+      {
+        "type": "arabic",
+        "label": "AlArabiya",
+        "languages": ["arabic"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "مسار ملف .arb",
+                "default": "${workspaceFolder}/رئيسي.arb"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "توقّف عند أول سطر",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "arabic",
+            "request": "launch",
+            "name": "تصحيح العربية",
+            "program": "${workspaceFolder}/رئيسي.arb"
+          }
+        ]
+      }
+    ]
+  }
+}
