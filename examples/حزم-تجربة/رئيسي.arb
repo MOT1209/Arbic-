@@ -1,0 +1,7 @@
+# شغّل أولًا:  arabic packages install examples/حزم-تجربة --registry examples/حزم-تجربة/سجل
+# ثم:        arabic run examples/حزم-تجربة/رئيسي.arb
+استورد "مطبوعات"
+
+عنوان("أهلا بالحزم")
+اطبع "ده برنامج بيستخدم حزمة مثبتة"
+سطر()

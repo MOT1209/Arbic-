@@ -12,14 +12,31 @@ from __future__ import annotations
 from al_arabiya.compiler.ast.nodes import (
     Assignment,
     BinaryExpression,
+    BreakStatement,
+    CallExpression,
+    ContinueStatement,
     Expression,
+    ExpressionStatement,
+    ForEachStatement,
+    FunctionDeclaration,
     Identifier,
     IfStatement,
+    ImportStatement,
+    IndexAssignment,
+    IndexExpression,
+    ListLiteral,
     Literal,
+    MapLiteral,
+    NullLiteral,
+    Parameter,
     PrintStatement,
     Program,
     RepeatStatement,
+    ReturnStatement,
     Statement,
+    ThrowStatement,
+    TryStatement,
+    TypeName,
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
@@ -248,6 +265,100 @@ class Parser:
         return operator, precedence, count
 
     def _parse_prefix(self) -> Expression:
+        expr = self._parse_atom()
+        while True:
+            if self._check(TokenType.LPAREN):
+                expr = self._finish_call(expr)
+            elif self._check(TokenType.LBRACKET):
+                expr = self._finish_index(expr)
+            else:
+                break
+        return expr
+
+    def _finish_index(self, target: Expression) -> Expression:
+        self._advance()  # consume '['
+        index = self.parse_expression()
+        bracket = self._expect(
+            TokenType.RBRACKET,
+            ErrorCode.EXPECTED_TOKEN,
+            "قوس الفهرسة '[' مش متقفل",
+            suggestion="اقفل القوس بـ ']'",
+        )
+        return IndexExpression(Span(target.span.start, bracket.span.end), target, index)
+
+    def _finish_call(self, callee: Expression) -> Expression:
+        self._advance()  # consume '('
+        self._skip_newlines()
+        arguments: list[Expression] = []
+        if not self._check(TokenType.RPAREN):
+            arguments.append(self.parse_expression())
+            self._skip_newlines()
+            while self._match(TokenType.COMMA):
+                self._skip_newlines()
+                arguments.append(self.parse_expression())
+                self._skip_newlines()
+        rparen = self._expect(
+            TokenType.RPAREN,
+            ErrorCode.EXPECTED_TOKEN,
+            "قوس الاستدعاء '(' مش متقفل",
+            suggestion="اقفل القوس بـ ')'",
+        )
+        return CallExpression(
+            Span(callee.span.start, rparen.span.end), callee, arguments
+        )
+
+    def _parse_list_literal(self, bracket: Token) -> Expression:
+        self._skip_newlines()
+        elements: list[Expression] = []
+        if not self._check(TokenType.RBRACKET):
+            elements.append(self.parse_expression())
+            self._skip_newlines()
+            while self._match(TokenType.COMMA):
+                self._skip_newlines()
+                if self._check(TokenType.RBRACKET):  # trailing comma
+                    break
+                elements.append(self.parse_expression())
+                self._skip_newlines()
+        end = self._expect(
+            TokenType.RBRACKET,
+            ErrorCode.EXPECTED_TOKEN,
+            "قوس القائمة '[' مش متقفل",
+            suggestion="اقفل القائمة بـ ']'",
+        )
+        return ListLiteral(Span(bracket.span.start, end.span.end), elements)
+
+    def _parse_map_literal(self, brace: Token) -> Expression:
+        self._skip_newlines()
+        entries: list[tuple[Expression, Expression]] = []
+        if not self._check(TokenType.RBRACE):
+            entries.append(self._parse_map_entry())
+            self._skip_newlines()
+            while self._match(TokenType.COMMA):
+                self._skip_newlines()
+                if self._check(TokenType.RBRACE):  # trailing comma
+                    break
+                entries.append(self._parse_map_entry())
+                self._skip_newlines()
+        end = self._expect(
+            TokenType.RBRACE,
+            ErrorCode.EXPECTED_TOKEN,
+            "قوس القاموس '{' مش متقفل",
+            suggestion="اقفل القاموس بـ '}'",
+        )
+        return MapLiteral(Span(brace.span.start, end.span.end), entries)
+
+    def _parse_map_entry(self) -> tuple[Expression, Expression]:
+        key = self.parse_expression()
+        self._expect(
+            TokenType.COLON,
+            ErrorCode.EXPECTED_TOKEN,
+            "محتاج ':' بين المفتاح والقيمة",
+            suggestion='مثال: {"الاسم": "أحمد"}',
+        )
+        value = self.parse_expression()
+        return key, value
+
+    def _parse_atom(self) -> Expression:
         token = self._advance()
         token_type = token.type
 
@@ -261,6 +372,12 @@ class Parser:
             return Literal(token.span, True)
         if token_type is TokenType.KW_FALSE:
             return Literal(token.span, False)
+        if token_type is TokenType.KW_NULL:
+            return NullLiteral(token.span)
+        if token_type is TokenType.LBRACKET:
+            return self._parse_list_literal(token)
+        if token_type is TokenType.LBRACE:
+            return self._parse_map_literal(token)
         if token_type is TokenType.IDENTIFIER:
             assert isinstance(token.value, str)
             return Identifier(token.span, token.value)
@@ -295,6 +412,19 @@ class Parser:
             suggestion="ابدأ التعبير برقم أو نص أو اسم متغير أو قوس '('",
         )
 
+    def _parse_optional_type(self) -> TypeName | None:
+        """Parse ``: <type-name>`` when present; otherwise return ``None``."""
+        if not self._match(TokenType.COLON):
+            return None
+        token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد ':' لازم يجي اسم نوع (رقم، نص، منطقي، قائمة، قاموس، ...)",
+            suggestion="مثال: خلي العمر : رقم = 25",
+        )
+        assert isinstance(token.value, str)
+        return TypeName(token.span, token.value)
+
     # ------------------------------------------------------------- statements
 
     def _parse_statement(self) -> Statement | None:
@@ -313,13 +443,147 @@ class Parser:
             return self._parse_repeat()
         if token_type is TokenType.KW_WHILE:
             return self._parse_while()
+        if token_type is TokenType.KW_FUNC:
+            return self._parse_function()
+        if token_type is TokenType.KW_RETURN:
+            return self._parse_return()
+        if token_type is TokenType.KW_BREAK:
+            return self._parse_break()
+        if token_type is TokenType.KW_CONTINUE:
+            return self._parse_continue()
+        if token_type is TokenType.KW_FOREACH:
+            return self._parse_for_each()
+        if token_type is TokenType.KW_IMPORT:
+            return self._parse_import()
+        if token_type is TokenType.KW_FROM:
+            return self._parse_from_import()
+        if token_type is TokenType.KW_TRY:
+            return self._parse_try()
+        if token_type is TokenType.KW_THROW:
+            return self._parse_throw()
         if token_type is TokenType.IDENTIFIER and self._peek(1).type is TokenType.ASSIGN:
             return self._parse_assignment()
-        raise self._make_error(
-            token,
-            ErrorCode.UNEXPECTED_TOKEN,
-            f"مش عارف أعمل إيه بـ {token.describe()}",
-            suggestion="الأوامر: اطبع، خلي، لو، كرر، طالما — أو ابدأ السطر باسم متغيّر",
+        return self._parse_expression_statement(token)
+
+    def _parse_expression_statement(self, first: Token) -> Statement:
+        """A call statement, an index assignment, or (otherwise) an error."""
+        expression = self.parse_expression()
+        if self._check(TokenType.ASSIGN):
+            return self._finish_index_assignment(expression, first)
+        if not isinstance(expression, CallExpression):
+            raise self._make_error(
+                first,
+                ErrorCode.UNEXPECTED_TOKEN,
+                f"مش عارف أعمل إيه بـ {first.describe()}",
+                suggestion="الأوامر: اطبع، خلي، لو، كرر، طالما، دالة — أو نادِ دالة",
+            )
+        end = self._prev.span.end
+        self._end_statement()
+        return ExpressionStatement(Span(expression.span.start, end), expression)
+
+    def _finish_index_assignment(self, target: Expression, first: Token) -> Statement:
+        if not isinstance(target, IndexExpression):
+            raise self._make_error(
+                first,
+                ErrorCode.INVALID_ASSIGN_TARGET,
+                "مينفعش تدّي قيمة للحاجة دي",
+                suggestion="غيّر متغيّر (س = ...) أو عنصر في قائمة/قاموس (ق[0] = ...)",
+            )
+        self._advance()  # consume '='
+        value = self.parse_expression()
+        end = self._prev.span.end
+        self._end_statement()
+        return IndexAssignment(
+            Span(target.span.start, end), target.target, target.index, value
+        )
+
+    def _parse_for_each(self) -> ForEachStatement:
+        keyword = self._advance()
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'لكل' لازم يجي اسم المتغير",
+            suggestion="مثال: لكل عنصر في القائمة",
+        )
+        self._expect(
+            TokenType.KW_MUL,  # the word "في" doubles as the "in" of a for-each
+            ErrorCode.EXPECTED_TOKEN,
+            "محتاج 'في' بعد اسم المتغير",
+            suggestion="مثال: لكل عنصر في القائمة",
+        )
+        iterable = self.parse_expression()
+        self._end_statement()
+        body = self._parse_block({TokenType.KW_END})
+        self._expect_block_end("'لكل' لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(name_token.value, str)
+        return ForEachStatement(
+            Span(keyword.span.start, end), name_token.value, name_token.span, iterable, body
+        )
+
+    def _parse_import(self) -> ImportStatement:
+        keyword = self._advance()
+        path_token = self._expect_string_path()
+        alias: str | None = None
+        if self._match(TokenType.KW_AS):
+            alias_token = self._expect(
+                TokenType.IDENTIFIER,
+                ErrorCode.EXPECTED_IDENTIFIER,
+                "بعد 'باسم' لازم يجي اسم",
+                suggestion='مثال: استورد "رياضيات" باسم ر',
+            )
+            assert isinstance(alias_token.value, str)
+            alias = alias_token.value
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(path_token.value, str)
+        return ImportStatement(
+            Span(keyword.span.start, end), path_token.value, path_token.span, alias=alias
+        )
+
+    def _parse_from_import(self) -> ImportStatement:
+        keyword = self._advance()
+        path_token = self._expect_string_path()
+        self._expect(
+            TokenType.KW_IMPORT,
+            ErrorCode.EXPECTED_TOKEN,
+            "بعد اسم الملف لازم تكتب 'استورد'",
+            suggestion='مثال: من "رياضيات" استورد جمع، طرح',
+        )
+        names: list[str] = []
+        first = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "محتاج اسم على الأقل بعد 'استورد'",
+            suggestion='مثال: من "رياضيات" استورد جمع',
+        )
+        assert isinstance(first.value, str)
+        names.append(first.value)
+        while self._match(TokenType.COMMA):
+            name_token = self._expect(
+                TokenType.IDENTIFIER,
+                ErrorCode.EXPECTED_IDENTIFIER,
+                "محتاج اسم بعد الفاصلة",
+            )
+            assert isinstance(name_token.value, str)
+            names.append(name_token.value)
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(path_token.value, str)
+        return ImportStatement(
+            Span(keyword.span.start, end),
+            path_token.value,
+            path_token.span,
+            names=tuple(names),
+        )
+
+    def _expect_string_path(self) -> Token:
+        return self._expect(
+            TokenType.STRING,
+            ErrorCode.EXPECTED_TOKEN,
+            "اسم الملف لازم يكون نص بين علامتي تنصيص",
+            suggestion='مثال: استورد "رياضيات"',
         )
 
     def _parse_print(self) -> PrintStatement:
@@ -337,6 +601,7 @@ class Parser:
             "بعد 'خلي' لازم يجي اسم المتغير",
             suggestion="مثال: خلي الاسم = \"أحمد\"",
         )
+        declared_type = self._parse_optional_type()
         self._expect(
             TokenType.ASSIGN,
             ErrorCode.EXPECTED_TOKEN,
@@ -352,6 +617,7 @@ class Parser:
             name_token.value,
             name_token.span,
             initializer,
+            declared_type=declared_type,
         )
 
     def _parse_assignment(self) -> Assignment:
@@ -445,3 +711,127 @@ class Parser:
         end = self._prev.span.end
         self._end_statement()
         return WhileStatement(Span(keyword.span.start, end), condition, body)
+
+    def _parse_function(self) -> FunctionDeclaration:
+        keyword = self._advance()
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'دالة' لازم يجي اسم الدالة",
+            suggestion="مثال: دالة اجمع (أ، ب)",
+        )
+        self._expect(
+            TokenType.LPAREN,
+            ErrorCode.EXPECTED_TOKEN,
+            "محتاج '(' بعد اسم الدالة",
+            suggestion="مثال: دالة اجمع (أ، ب)",
+        )
+        parameters: list[Parameter] = []
+        if not self._check(TokenType.RPAREN):
+            parameters.append(self._parse_parameter())
+            while self._match(TokenType.COMMA):
+                parameters.append(self._parse_parameter())
+        self._expect(
+            TokenType.RPAREN,
+            ErrorCode.EXPECTED_TOKEN,
+            "قوس المعاملات مش متقفل",
+            suggestion="اقفل القوس بـ ')'",
+        )
+        return_type = self._parse_optional_type()
+        self._end_statement()
+        body = self._parse_block({TokenType.KW_END})
+        self._expect_block_end("الدالة لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(name_token.value, str)
+        return FunctionDeclaration(
+            Span(keyword.span.start, end),
+            name_token.value,
+            name_token.span,
+            parameters,
+            body,
+            return_type=return_type,
+        )
+
+    def _parse_parameter(self) -> Parameter:
+        token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_PARAMETER,
+            "اسم المعامل لازم يكون كلمة",
+            suggestion="مثال: دالة اجمع (أ، ب)",
+        )
+        assert isinstance(token.value, str)
+        declared_type = self._parse_optional_type()
+        return Parameter(token.span, token.value, declared_type=declared_type)
+
+    def _parse_return(self) -> ReturnStatement:
+        keyword = self._advance()
+        value: Expression | None = None
+        if not self._check(TokenType.NEWLINE) and not self._at_eof():
+            value = self.parse_expression()
+        end = value.span.end if value is not None else keyword.span.end
+        self._end_statement()
+        return ReturnStatement(Span(keyword.span.start, end), value)
+
+    def _parse_break(self) -> BreakStatement:
+        keyword = self._advance()
+        self._end_statement()
+        return BreakStatement(keyword.span)
+
+    def _parse_continue(self) -> ContinueStatement:
+        keyword = self._advance()
+        self._end_statement()
+        return ContinueStatement(keyword.span)
+
+    def _parse_throw(self) -> ThrowStatement:
+        keyword = self._advance()
+        value = self.parse_expression()
+        end = self._prev.span.end
+        self._end_statement()
+        return ThrowStatement(Span(keyword.span.start, end), value)
+
+    def _parse_try(self) -> TryStatement:
+        keyword = self._advance()
+        self._end_statement()
+        try_body = self._parse_block(
+            {TokenType.KW_CATCH, TokenType.KW_FINALLY, TokenType.KW_END}
+        )
+
+        catch_name: str | None = None
+        catch_name_span: Span | None = None
+        catch_body: list[Statement] | None = None
+        if self._check(TokenType.KW_CATCH):
+            self._advance()
+            if self._check(TokenType.IDENTIFIER):
+                name_token = self._advance()
+                assert isinstance(name_token.value, str)
+                catch_name = name_token.value
+                catch_name_span = name_token.span
+            self._end_statement()
+            catch_body = self._parse_block({TokenType.KW_FINALLY, TokenType.KW_END})
+
+        finally_body: list[Statement] | None = None
+        if self._check(TokenType.KW_FINALLY):
+            self._advance()
+            self._end_statement()
+            finally_body = self._parse_block({TokenType.KW_END})
+
+        if catch_body is None and finally_body is None:
+            raise self._make_error(
+                self._peek(),
+                ErrorCode.TRY_WITHOUT_HANDLER,
+                "'حاول' لازم يتبعها 'امسك' أو 'أخيرا'",
+                suggestion="ضيف 'امسك' لمعالجة الخطأ أو 'أخيرا' للتنظيف",
+            )
+
+        self._expect_block_end("'حاول' لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        return TryStatement(
+            Span(keyword.span.start, end),
+            try_body,
+            catch_name=catch_name,
+            catch_name_span=catch_name_span,
+            catch_body=catch_body,
+            finally_body=finally_body,
+        )

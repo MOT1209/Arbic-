@@ -30,7 +30,7 @@ al_arabiya/
 │   └── interpreter/       # Environment, Interpreter
 └── cli/                   # main.py (أوامر) + repl.py (REPL)
 legacy/masry.py            # المترجم القديم (للرجوعية)
-tests/                     # 211 اختبار (unit + integration + regression + contracts)
+tests/                     # 419 اختبار (unit + integration + regression + contracts)
 ```
 
 ---
@@ -58,7 +58,7 @@ mypy                          # أنواع صارمة (strict)
 4. **عقدة AST** → `dataclass` جديد في `ast/nodes.py` + زر في `visit_*` بالـ interpreter (وأي دوال `check_*`).
 5. **كود خطأ** → أضف في `ErrorCode` (بنمط `E####`) واستخدمه.
 
-بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **211/211** واختبارات الرجوعية (goldens) مطابقة.
+بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **419/419** واختبارات الرجوعية (goldens) مطابقة.
 
 ---
 

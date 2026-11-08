@@ -77,6 +77,24 @@ def test_check_error(tmp_path, capsys):
     assert "E2005" in capsys.readouterr().err
 
 
+def test_check_passes_well_typed_program(tmp_path, capsys):
+    path = write_program(tmp_path, "خلي س : رقم = 5\nاطبع س\n")
+    assert main(["check", path]) == 0
+    assert "سليم" in capsys.readouterr().err
+
+
+def test_check_reports_type_error(tmp_path, capsys):
+    path = write_program(tmp_path, 'خلي س : رقم = "نص"\n')
+    assert main(["check", path]) == 1
+    assert "E5001" in capsys.readouterr().err
+
+
+def test_run_ignores_type_annotations(tmp_path, capsys):
+    path = write_program(tmp_path, "خلي س : رقم = 5\nاطبع س\n")
+    assert main(["run", path]) == 0
+    assert "5" in capsys.readouterr().out
+
+
 def test_check_does_not_execute(tmp_path, capsys):
     path = write_program(tmp_path, GOOD_PROGRAM)
     main(["check", path])
@@ -86,6 +104,98 @@ def test_check_does_not_execute(tmp_path, capsys):
 def test_run_without_file_argument(tmp_path, capsys):
     assert main(["run"]) == 2
     assert "محتاج اسم ملف" in capsys.readouterr().err
+
+
+def test_run_with_vm_backend(tmp_path, capsys):
+    path = write_program(tmp_path, "دالة م (س)\n    رجّع س في س\nخلاص\nاطبع م(8)\n")
+    assert main(["run", "--vm", path]) == 0
+    assert "64" in capsys.readouterr().out
+
+
+def test_run_vm_falls_back_on_unsupported(tmp_path, capsys):
+    # a رجّع that crosses a أخيرا still runs on the interpreter
+    program = (
+        "دالة ق ()\n"
+        "    حاول\n"
+        "        رجّع 1\n"
+        "    أخيرا\n"
+        '        اطبع "تنظيف"\n'
+        "    خلاص\n"
+        "خلاص\n"
+        "اطبع ق()\n"
+    )
+    path = write_program(tmp_path, program)
+    assert main(["run", "--vm", path]) == 0
+    captured = capsys.readouterr()
+    assert "1" in captured.out
+    assert "VM" in captured.err  # a fallback note was printed
+
+
+def test_run_vm_executes_closures(tmp_path, capsys):
+    program = (
+        "دالة عداد ()\n"
+        "    خلي س = 0\n"
+        "    دالة زود ()\n"
+        "        س = س زائد 1\n"
+        "        رجّع س\n"
+        "    خلاص\n"
+        "    رجّع زود\n"
+        "خلاص\n"
+        "خلي ز = عداد()\n"
+        "اطبع ز()\n"
+        "اطبع ز()\n"
+    )
+    path = write_program(tmp_path, program)
+    assert main(["run", "--vm", path]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.split() == ["1", "2"]
+    assert "VM" not in captured.err  # ran on the VM, no fallback
+
+
+def test_run_vm_executes_lists_and_exceptions(tmp_path, capsys):
+    program = (
+        "خلي ق = [1، 2، 3]\n"
+        "حاول\n"
+        "    اطبع ق[1]\n"
+        "    ارم \"توقف\"\n"
+        "امسك e\n"
+        "    اطبع e\n"
+        "خلاص\n"
+    )
+    path = write_program(tmp_path, program)
+    assert main(["run", "--vm", path]) == 0
+    captured = capsys.readouterr()
+    assert "2" in captured.out
+    assert "توقف" in captured.out
+    assert "VM" not in captured.err  # ran on the VM, no fallback
+
+
+def test_run_vm_runtime_error(tmp_path, capsys):
+    path = write_program(tmp_path, "اطبع 1 على 0\n")
+    assert main(["run", "--vm", path]) == 1
+    assert "E4002" in capsys.readouterr().err
+
+
+def test_bench_reports_speedup(tmp_path, capsys):
+    path = write_program(tmp_path, "خلي ع = 0\nطالما ع أصغر من 100\n    ع = ع زائد 1\nخلاص\n")
+    assert main(["bench", path]) == 0
+    out = capsys.readouterr().out
+    assert "speedup" in out or "التسريع" in out
+
+
+def test_bench_unsupported_returns_2(tmp_path, capsys):
+    # a رجّع crossing a أخيرا isn't covered by the VM, so no comparison
+    program = (
+        "دالة ق ()\n"
+        "    حاول\n"
+        "        رجّع 1\n"
+        "    أخيرا\n"
+        '        اطبع "تنظيف"\n'
+        "    خلاص\n"
+        "خلاص\n"
+    )
+    path = write_program(tmp_path, program)
+    assert main(["bench", path]) == 2
 
 
 # ---------------------------------------------------------------------- REPL

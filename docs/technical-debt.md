@@ -1,5 +1,9 @@
 <div dir="rtl">
 
+> **تحديث بعد الدمج:** هذا المستند لقطة تاريخية للكود عند `f338e9e` (Phase 0). بعد دمج `origin/main` (المراحل 2–8) اللغة بقت فيها دوال، قوائم/قواميس، وحدات، استثناءات، فحص أنواع، LSP، VM، ومدير حزم. للوضع الحالي راجع `README.md` و`docs/language/syntax.md`.
+
+
+
 # سجل الدين التقني — Arbic / AlArabiya
 
 > **آخر تحديث:** 2026-11-08 (Phase 0 + تحديث Phase 1)
@@ -140,7 +144,7 @@ push_log.txt      0
 
 **الدليل (وقت التدقيق):**
 - `README.md:30` و`pyproject.toml:26`: `https://github.com/ahmedfox1/masry`.
-- `README.md` يحتوي «ب逃脱ات» (أحرف CJK) وثلاثة أسطر `"# Arbic-"` بعد `</div>`.
+- `README.md` كان بيحتوي «ب逃脱ات» (أحرف CJK) وثلاثة أسطر `"# Arbic-"` بعد `</div>` — اتصلحوا في Phase 1 وبعد الدمج.
 - `docs/development/guide.md` يذكر `compiler/positions.py` (الفعلي `compiler/lexer/positions.py`) و`token_kind_of` (غير موجود) و`tools/gen_goldens.py` (غير موجود).
 - `docs/architecture/phase-1-analysis.md` §4.5 يذكر exit code `3` غير موجود.
 

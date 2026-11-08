@@ -15,14 +15,31 @@ __all__ = [
     "Assignment",
     "ASTNode",
     "BinaryExpression",
+    "BreakStatement",
+    "CallExpression",
+    "ContinueStatement",
     "Expression",
+    "ExpressionStatement",
+    "ForEachStatement",
+    "FunctionDeclaration",
     "Identifier",
     "IfStatement",
+    "ImportStatement",
+    "IndexAssignment",
+    "IndexExpression",
+    "ListLiteral",
     "Literal",
+    "MapLiteral",
+    "NullLiteral",
+    "Parameter",
     "PrintStatement",
     "Program",
     "RepeatStatement",
+    "ReturnStatement",
     "Statement",
+    "ThrowStatement",
+    "TryStatement",
+    "TypeName",
     "UnaryExpression",
     "VariableDeclaration",
     "WhileStatement",
@@ -39,6 +56,13 @@ class ASTNode:
     """Base class for every AST node."""
 
     span: Span
+
+
+@dataclass(slots=True)
+class TypeName(ASTNode):
+    """An optional type annotation, e.g. ``رقم`` / ``نص`` / ``قائمة``."""
+
+    name: str
 
 
 # ----------------------------------------------------------------- statements
@@ -65,11 +89,12 @@ class PrintStatement(Statement):
 
 @dataclass(slots=True)
 class VariableDeclaration(Statement):
-    """``خلي <name> = <expr>``"""
+    """``خلي <name> [: <type>] = <expr>``"""
 
     name: str
     name_span: Span
     initializer: Expression
+    declared_type: TypeName | None = None
 
 
 @dataclass(slots=True)
@@ -106,6 +131,101 @@ class WhileStatement(Statement):
     body: list[Statement]
 
 
+@dataclass(slots=True)
+class Parameter(ASTNode):
+    """One formal parameter in a function declaration (with optional type)."""
+
+    name: str
+    declared_type: TypeName | None = None
+
+
+@dataclass(slots=True)
+class FunctionDeclaration(Statement):
+    """``دالة <name> (<params>) [: <type>] ... خلاص``"""
+
+    name: str
+    name_span: Span
+    parameters: list[Parameter]
+    body: list[Statement]
+    return_type: TypeName | None = None
+
+    @property
+    def params(self) -> list[Parameter]:
+        """Alias used by the runtime function value."""
+        return self.parameters
+
+
+@dataclass(slots=True)
+class ReturnStatement(Statement):
+    """``رجّع <expr>`` (the expression is optional)."""
+
+    value: Expression | None = None
+
+
+@dataclass(slots=True)
+class ExpressionStatement(Statement):
+    """An expression used as a statement (currently a function call)."""
+
+    expression: Expression
+
+
+@dataclass(slots=True)
+class IndexAssignment(Statement):
+    """``<collection>[<index>] = <value>``"""
+
+    collection: Expression
+    index: Expression
+    value: Expression
+
+
+@dataclass(slots=True)
+class ForEachStatement(Statement):
+    """``لكل <name> في <iterable> ... خلاص``"""
+
+    variable: str
+    variable_span: Span
+    iterable: Expression
+    body: list[Statement]
+
+
+@dataclass(slots=True)
+class ImportStatement(Statement):
+    """``استورد "<path>"`` optionally ``باسم <alias>`` or ``من "<path>" استورد a، b``."""
+
+    path: str
+    path_span: Span
+    alias: str | None = None
+    names: tuple[str, ...] | None = None
+
+
+@dataclass(slots=True)
+class BreakStatement(Statement):
+    """``اكسر`` — stop the innermost loop."""
+
+
+@dataclass(slots=True)
+class ContinueStatement(Statement):
+    """``كمل`` — jump to the next iteration of the innermost loop."""
+
+
+@dataclass(slots=True)
+class ThrowStatement(Statement):
+    """``ارم <expr>`` — raise an error value."""
+
+    value: Expression
+
+
+@dataclass(slots=True)
+class TryStatement(Statement):
+    """``حاول ... امسك [اسم] ... أخيرا ... خلاص`` (catch/finally each optional)."""
+
+    try_body: list[Statement]
+    catch_name: str | None = None
+    catch_name_span: Span | None = None
+    catch_body: list[Statement] | None = None
+    finally_body: list[Statement] | None = None
+
+
 # --------------------------------------------------------------- expressions
 
 
@@ -122,10 +242,45 @@ class Literal(Expression):
 
 
 @dataclass(slots=True)
+class NullLiteral(Expression):
+    """The empty value literal ``فراغ``."""
+
+
+@dataclass(slots=True)
 class Identifier(Expression):
     """A variable reference."""
 
     name: str
+
+
+@dataclass(slots=True)
+class CallExpression(Expression):
+    """``<callee>(<args>)``"""
+
+    callee: Expression
+    arguments: list[Expression]
+
+
+@dataclass(slots=True)
+class IndexExpression(Expression):
+    """``<target>[<index>]``"""
+
+    target: Expression
+    index: Expression
+
+
+@dataclass(slots=True)
+class ListLiteral(Expression):
+    """``[<e>، <e>، ...]``"""
+
+    elements: list[Expression]
+
+
+@dataclass(slots=True)
+class MapLiteral(Expression):
+    """``{<key>: <value>، ...}``"""
+
+    entries: list[tuple[Expression, Expression]]
 
 
 @dataclass(slots=True)

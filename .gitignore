@@ -21,6 +21,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# AlArabiya packages (vendored dependencies + lockfile)
+حزم/
+حزمة-قفل.json
+
 # Local credential caches and shell logs — never commit these
 cmdkey_all.txt
 gh_code.txt

@@ -57,6 +57,7 @@ _SINGLE_CHAR_TOKENS: dict[str, TokenType] = {
     "{": TokenType.LBRACE,
     "}": TokenType.RBRACE,
     ",": TokenType.COMMA,
+    "،": TokenType.COMMA,  # ARABIC COMMA (U+060C)
     ":": TokenType.COLON,
     ".": TokenType.DOT,
 }
@@ -231,7 +232,7 @@ class Lexer:
         if self._peek() != "{":
             self._bag.error(
                 ErrorCode.INVALID_ESCAPE,
-                "هلوسة \\u لازم تيجي بين قوسين: \\u{XXXX}",
+                "الـ \\u لازم تيجي بين قوسين: \\u{XXXX}",
                 Span(start, self._here()),
                 suggestion="مثال: \\u{0627}",
             )

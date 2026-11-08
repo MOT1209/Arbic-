@@ -8,6 +8,10 @@ Two user-facing promises are pinned here:
 * the ``arabic`` command exits with ``0`` on success, ``1`` on a language
   error and ``2`` on a usage/file error, exactly as the README and
   ``arabic help`` state.
+
+The reference table is the only place codes are listed for users, so it has
+to grow with the enum: E1 lexical, E2 syntax, W3 warnings, E4 runtime, E5
+static type checking.
 """
 
 from __future__ import annotations
@@ -48,7 +52,7 @@ def test_error_codes_keep_their_layer_ranges() -> None:
     for code in ErrorCode:
         assert _CODE_SHAPE.fullmatch(code.value), code
         if code.value.startswith("E"):
-            assert code.value[1] in "124", f"{code.name} is outside E1/E2/E4"
+            assert code.value[1] in "1245", f"{code.name} is outside E1/E2/E4/E5"
         else:
             assert code.value[1] == "3", f"{code.name} is outside W3"
 
