@@ -59,7 +59,20 @@ def broken_links(root: Path = ROOT) -> list[tuple[Path, str]]:
     return broken
 
 
+def _use_utf8_output() -> None:
+    """GitHub's Windows runners default to cp1252, which cannot encode Arabic."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+
 def main() -> int:
+    _use_utf8_output()
     broken = broken_links()
     if not broken:
         print("كل الروابط النسبية سليمة.")
