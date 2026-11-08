@@ -64,7 +64,9 @@ class _CappedWriter:
 
 def _apply_posix_limits(memory_bytes: int, timeout: float) -> None:
     resource = cast(Any, importlib.import_module("resource"))
-    seconds = max(1, int(timeout) + 1)
+    # CPU time is only a backstop: the parent enforces the wall-clock timeout,
+    # and a lower CPU limit would kill the worker first and hide that fact.
+    seconds = max(2, int(timeout) + 5)
     wanted = {
         "RLIMIT_AS": memory_bytes,
         "RLIMIT_CPU": seconds,

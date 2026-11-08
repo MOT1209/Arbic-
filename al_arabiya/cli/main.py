@@ -105,6 +105,8 @@ def cmd_run(
             sys.stderr.write("⛔ البرنامج طبع فوق الحد المسموح\n")
         elif sandbox_result.limit == "memory":
             sys.stderr.write("⛔ العامل اتقفل (تعدّى حد الذاكرة أو واجه عطلًا)\n")
+        elif sandbox_result.limit == "signal":
+            sys.stderr.write("⛔ العامل اتقفل بإشارة من نظام التشغيل (تعدّى حدًّا)\n")
         if sandbox_result.timed_out:
             return 1
         return sandbox_result.exit_code if sandbox_result.exit_code in (0, 1, 2) else 1

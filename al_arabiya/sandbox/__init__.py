@@ -109,7 +109,7 @@ def run_sandboxed(
 
     timed_out = False
     try:
-        stdout_raw, stderr_raw = process.communicate(timeout=limits.timeout + 2.0)
+        stdout_raw, stderr_raw = process.communicate(timeout=limits.timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
         process.kill()
@@ -127,6 +127,8 @@ def run_sandboxed(
     limit: str | None = None
     if process.returncode == 3:
         limit = "output"
+    elif process.returncode < 0:
+        limit = "signal"
     elif process.returncode != 0 and not stderr.strip():
         limit = "memory"
     return SandboxResult(
