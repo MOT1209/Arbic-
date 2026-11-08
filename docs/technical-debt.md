@@ -30,9 +30,9 @@
 | TD-11 | REPL heuristic هش | P2 | Phase 1 |
 | TD-12 | نطاق عالمي واحد (قرار موروث) | P2 | Phase 2 (ADR-02) |
 | TD-13 | لا package manager أصلًا (ليس «إصلاح ثغرات») | P1 | Phase 8 |
-| TD-14 | لا fuzz/property/security tests | P2 | Phase 1/10 |
-| TD-15 | لا benchmarks | P3 | Phase 1 |
-| TD-16 | تكرار قراءة الملف + `type: ignore` في CLI | P3 | Phase 1 |
+| TD-14 | لا fuzz/property/security tests | P2 | 🟡 fuzz حتمي في `tests/fuzz`؛ property/security لسه |
+| TD-15 | لا benchmarks | P3 | 🟡 `tools/bench.py`؛ مش مربوط بـ CI |
+| TD-16 | تكرار قراءة الملف + `type: ignore` في CLI | P3 | 🟡 جزء منه |
 | TD-17 | `span` القوسين لا يشملهما | P3 | Phase 2 |
 | TD-18 | لا SECURITY.md / CONTRIBUTING.md | P2 | ✅ اتصلح جزئيًا |
 | TD-19 | لا `arabic build/init/test/format/doctor` | P2 | Phase 8 |
@@ -46,7 +46,9 @@
 - **TD-05:** 🟡 جزئي — الروابط والنص التالف والمسارات وأكواد الخروج اتصحّحوا؛ توحيد الاسم لسه محتاج ADR-01.
 - **TD-10:** ✅ اتصلح — المفسّر والـ VM بقوا يرفضوا السالب والعشري بجزء كسري بـ `E4004`، ومعاهم اختبارات سالبة في المحرّكين.
 - **TD-18:** ✅ اتصلح جزئيًا — `SECURITY.md` و`CONTRIBUTING.md` اتضافوا؛ المواصفة الرسمية و`docs/migration-2.0.md` لسه.
-- **باقي بنود Phase 1** (TD-11 REPL، TD-14 fuzz، TD-15 benchmarks، TD-16 CLI، TD-21 الإصدارات) لسه مفتوحة — Phase 1 الحالية كانت محدودة بالنطاق المطلوب: التوثيق، CI، تأمين الملفات، وعقود الأكواد.
+- **TD-14/TD-15:** 🟡 جزئيًا — `tests/fuzz` (مولّد حتمي بدون Hypothesis) و`tools/bench.py` اتضافوا؛ property/security tests وربط القياسات بـ CI لسه.
+- **TD-16:** 🟡 جزئيًا — `_emit_diagnostics` بقى `Iterable[Diagnostic]` من غير ignore؛ قراءة المصدر لسه مكرّرة، و`reconfigure` لسه محتاج ignore.
+- **باقي بنود Phase 1** (TD-11 REPL، TD-21 الإصدارات) لسه مفتوحة.
 
 ---
 

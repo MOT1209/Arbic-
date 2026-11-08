@@ -11,13 +11,14 @@ from __future__ import annotations
 import os
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from al_arabiya import __version__
 from al_arabiya.cli.repl import run_repl
 from al_arabiya.compiler.checker import check_types
 from al_arabiya.compiler.diagnostics.diagnostics import (
+    Diagnostic,
     DiagnosticBag,
     render_diagnostic,
     render_diagnostics,
@@ -44,8 +45,8 @@ def _configure_stdio() -> None:
             pass
 
 
-def _emit_diagnostics(diagnostics: object, source: SourceFile) -> None:
-    text = render_diagnostics(diagnostics, source)  # type: ignore[arg-type]
+def _emit_diagnostics(diagnostics: Iterable[Diagnostic], source: SourceFile) -> None:
+    text = render_diagnostics(diagnostics, source)
     if text:
         sys.stderr.write(text + "\n")
 

@@ -30,7 +30,7 @@ al_arabiya/
 │   └── interpreter/       # Environment, Interpreter
 └── cli/                   # main.py (أوامر) + repl.py (REPL)
 legacy/masry.py            # المترجم القديم (للرجوعية)
-tests/                     # 424 اختبار (unit + integration + regression + contracts)
+tests/                     # 509 اختبار (unit + integration + regression + contracts + fuzz)
 ```
 
 ---
@@ -41,6 +41,7 @@ tests/                     # 424 اختبار (unit + integration + regression +
 arabic run مثال.arb           # تشغيل
 arabic check مثال.arb         # فحص بدون تشغيل
 arabic repl                   # تفاعلي
+python -m tools.bench          # قياس المفسّر مقابل VM (مش جزء من البوابة)
 pytest                        # كل الاختبارات
 pytest tests/lexer            # طبقة واحدة
 pytest -k short_circuit       # اختبار بالاسم
@@ -58,7 +59,7 @@ mypy                          # أنواع صارمة (strict)
 4. **عقدة AST** → `dataclass` جديد في `ast/nodes.py` + زر في `visit_*` بالـ interpreter (وأي دوال `check_*`).
 5. **كود خطأ** → أضف في `ErrorCode` (بنمط `E####`) واستخدمه.
 
-بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **424/424** واختبارات الرجوعية (goldens) مطابقة.
+بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **509/509** واختبارات الرجوعية (goldens) مطابقة.
 
 ---
 
