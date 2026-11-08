@@ -9,6 +9,8 @@ problem becomes a :class:`Diagnostic` in the bag.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from al_arabiya.compiler.ast.nodes import (
     Assignment,
     BinaryExpression,
@@ -383,13 +385,15 @@ class Parser:
             return Identifier(token.span, token.value)
         if token_type is TokenType.LPAREN:
             inner = self.parse_expression()
-            self._expect(
+            closing = self._expect(
                 TokenType.RPAREN,
                 ErrorCode.EXPECTED_TOKEN,
                 "قوس '(' مش متقفل",
                 suggestion="اقفل القوس بـ ')'",
             )
-            return inner
+            # The grouping is not a node of its own, but its parentheses belong
+            # to the expression's range so diagnostics and LSP spans cover them.
+            return replace(inner, span=Span(token.span.start, closing.span.end))
         if token_type in (TokenType.MINUS, TokenType.KW_SUB):
             operand = self.parse_expression(Precedence.UNARY)
             return UnaryExpression(Span(token.span.start, operand.span.end), "-", operand)

@@ -1,4 +1,4 @@
-"""Run the full quality gate: pytest + ruff + mypy.
+"""Run the full quality gate: ruff + mypy + docs links + pytest.
 
 Usage:
     python tools/check.py
@@ -12,6 +12,7 @@ import sys
 CHECKS = [
     ("ruff", [sys.executable, "-m", "ruff", "check", "."]),
     ("mypy", [sys.executable, "-m", "mypy"]),
+    ("links", [sys.executable, "-m", "tools.check_links"]),
     ("pytest", [sys.executable, "-m", "pytest"]),
 ]
 

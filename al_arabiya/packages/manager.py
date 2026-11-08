@@ -9,7 +9,9 @@ project's ``حزم/`` folder and writes a lockfile.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +38,8 @@ PACKAGES_DIR = "حزم"
 _KEY_NAME = "الاسم"
 _KEY_VERSION = "الإصدار"
 _KEY_DEPS = "الاعتماديات"
+_KEY_HASHES = "البصمات"
+_HASH_LENGTH = 64
 
 
 class PackageError(Exception):
@@ -84,6 +88,8 @@ class Manifest:
     name: str
     version: Version
     dependencies: dict[str, str] = field(default_factory=dict)
+    #: optional ``file -> sha256`` map, checked before anything is installed
+    hashes: dict[str, str] = field(default_factory=dict)
 
 
 def _validate_name(name: str, source: str) -> str:
@@ -97,6 +103,19 @@ def _validate_name(name: str, source: str) -> str:
     ):
         raise PackageError(f"اسم حزمة غير صالح في '{source}': '{name}'")
     return name
+
+
+def _validate_relative_path(relative: str, source: str) -> str:
+    """A checksum key must be a plain path inside the package directory."""
+    pure = Path(relative)
+    if (
+        not relative
+        or pure.is_absolute()
+        or any(part in ("..",) for part in pure.parts)
+        or relative.startswith(("/", "\\"))
+    ):
+        raise PackageError(f"مسار غير صالح في '{_KEY_HASHES}' بـ '{source}': '{relative}'")
+    return relative
 
 
 def _parse_manifest_data(data: object, source: str) -> Manifest:
@@ -117,7 +136,20 @@ def _parse_manifest_data(data: object, source: str) -> Manifest:
         if not isinstance(dep_name, str) or not isinstance(constraint, str):
             raise PackageError(f"اعتماد غير صالح في '{source}'")
         dependencies[_validate_name(dep_name, source)] = constraint
-    return Manifest(name, Version.parse(raw_version), dependencies)
+
+    raw_hashes = data.get(_KEY_HASHES, {})
+    if not isinstance(raw_hashes, dict):
+        raise PackageError(f"'{_KEY_HASHES}' في '{source}' لازم يكون كائن")
+    hashes: dict[str, str] = {}
+    for relative, digest in raw_hashes.items():
+        if not isinstance(relative, str) or not isinstance(digest, str):
+            raise PackageError(f"بصمة غير صالحة في '{source}'")
+        if len(digest) != _HASH_LENGTH:
+            raise PackageError(
+                f"بصمة '{relative}' في '{source}' لازم تكون sha256 (64 حرفًا hex)"
+            )
+        hashes[_validate_relative_path(relative, source)] = digest.lower()
+    return Manifest(name, Version.parse(raw_version), dependencies, hashes)
 
 
 def read_manifest(path: Path) -> Manifest:
@@ -200,19 +232,63 @@ def resolve(manifest: Manifest, registry: Registry) -> dict[str, Version]:
     return resolved
 
 
+def _reject_symlinks(source: Path, name: str) -> None:
+    """Refuse a package tree that contains symlinks.
+
+    ``copytree`` would otherwise copy the link target's content (or, with
+    ``symlinks=True``, plant a link that escapes ``حزم/`` when read later), so a
+    registry entry cannot vouch for paths outside itself.
+    """
+    if source.is_symlink():
+        raise PackageError(f"الحزمة '{name}' نفسها symlink — مرفوضة")
+    for root, directories, files in os.walk(source, followlinks=False):
+        for entry in (*directories, *files):
+            candidate = os.path.join(root, entry)
+            if os.path.islink(candidate):
+                relative = os.path.relpath(candidate, source)
+                raise PackageError(f"الحزمة '{name}' فيها symlink: '{relative}'")
+
+
+def _verify_hashes(source: Path, manifest: Manifest | None, name: str) -> None:
+    """Check the optional ``البصمات`` map before anything is written."""
+    if manifest is None or not manifest.hashes:
+        return
+    for relative, expected in manifest.hashes.items():
+        target = source / relative
+        if not target.is_file():
+            raise PackageError(
+                f"ملف البصمة '{relative}' مش موجود في الحزمة '{name}'"
+            )
+        actual = hashlib.sha256(target.read_bytes()).hexdigest()
+        if actual != expected:
+            raise PackageError(
+                f"بصمة '{relative}' في الحزمة '{name}' مش مطابقة "
+                "(الملف اتغيّر بعد النشر)"
+            )
+
+
 def install(project_dir: Path, registry: Registry) -> dict[str, Version]:
     """Resolve and vendor the project's dependencies into ``حزم/``.
 
-    Returns the resolved name→version map and writes the lockfile.
+    Every source package is inspected (symlinks, hashes) *before* the first
+    ``حزم/<name>`` folder is removed, so a broken registry entry cannot destroy
+    an existing installation.  Returns the resolved name→version map and writes
+    the lockfile.
     """
     manifest = read_manifest(project_dir / MANIFEST_NAME)
     resolved = resolve(manifest, registry)
 
-    packages_dir = project_dir / PACKAGES_DIR
+    plan: list[tuple[str, Path]] = []
     for name, version in resolved.items():
         source = registry.path(name, version)
         if not source.is_dir():
             raise PackageError(f"الحزمة '{name}' {version} مش موجودة في السجلّ")
+        _reject_symlinks(source, name)
+        _verify_hashes(source, registry.manifest(name, version), name)
+        plan.append((name, source))
+
+    packages_dir = project_dir / PACKAGES_DIR
+    for name, source in plan:
         destination = packages_dir / name
         if destination.exists():
             shutil.rmtree(destination)

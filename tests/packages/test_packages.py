@@ -264,6 +264,111 @@ def test_registry_path_rejects_traversal_name(tmp_path: Path):
         Registry(tmp_path).path("..", Version(1, 0, 0))
 
 
+def test_checksum_mismatch_is_rejected_before_touching_the_project(tmp_path: Path):
+    import hashlib
+
+    registry_root = tmp_path / "سجل"
+    package = registry_root / "أدوات" / "1.0.0"
+    package.mkdir(parents=True)
+    (package / "أدوات.arb").write_text("خلي س = 1", encoding="utf-8")
+    write_raw_manifest(
+        package / manager.MANIFEST_NAME,
+        {
+            "الاسم": "أدوات",
+            "الإصدار": "1.0.0",
+            "البصمات": {
+                "أدوات.arb": hashlib.sha256("محتوى تاني".encode()).hexdigest()
+            },
+        },
+    )
+
+    project = tmp_path / "مشروع"
+    project.mkdir()
+    write_raw_manifest(
+        project / manager.MANIFEST_NAME,
+        {"الاسم": "تطبيق", "الإصدار": "1.0.0", "الاعتماديات": {"أدوات": "^1.0.0"}},
+    )
+    installed = project / manager.PACKAGES_DIR / "أدوات"
+    installed.mkdir(parents=True)
+    (installed / "قديم.arb").write_text("خلي قديم = 1", encoding="utf-8")
+
+    with pytest.raises(manager.PackageError):
+        manager.install(project, manager.Registry(registry_root))
+
+    # the previously installed copy is still there: nothing was deleted.
+    assert (installed / "قديم.arb").is_file()
+
+
+def test_matching_checksums_install_normally(tmp_path: Path):
+    import hashlib
+
+    registry_root = tmp_path / "سجل"
+    package = registry_root / "أدوات" / "1.0.0"
+    package.mkdir(parents=True)
+    payload = "خلي س = 1".encode()
+    (package / "أدوات.arb").write_bytes(payload)
+    write_raw_manifest(
+        package / manager.MANIFEST_NAME,
+        {
+            "الاسم": "أدوات",
+            "الإصدار": "1.0.0",
+            "البصمات": {"أدوات.arb": hashlib.sha256(payload).hexdigest()},
+        },
+    )
+
+    project = tmp_path / "مشروع"
+    project.mkdir()
+    write_raw_manifest(
+        project / manager.MANIFEST_NAME,
+        {"الاسم": "تطبيق", "الإصدار": "1.0.0", "الاعتماديات": {"أدوات": "^1.0.0"}},
+    )
+
+    assert manager.install(project, manager.Registry(registry_root)) == {
+        "أدوات": Version(1, 0, 0)
+    }
+    assert (project / manager.PACKAGES_DIR / "أدوات" / "أدوات.arb").is_file()
+
+
+def test_install_rejects_symlinks_inside_a_package(tmp_path: Path):
+    import os
+
+    registry_root = tmp_path / "سجل"
+    package = registry_root / "مشبوه" / "1.0.0"
+    package.mkdir(parents=True)
+    (package / "داخل.arb").write_text("خلي س = 1", encoding="utf-8")
+    outside = tmp_path / "برّه.txt"
+    outside.write_text("سري", encoding="utf-8")
+    try:
+        os.symlink(outside, package / "رابط.txt")
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not permitted on this platform")
+
+    project = tmp_path / "مشروع"
+    project.mkdir()
+    write_raw_manifest(
+        project / manager.MANIFEST_NAME,
+        {"الاسم": "تطبيق", "الإصدار": "1.0.0", "الاعتماديات": {"مشبوه": "*"}},
+    )
+
+    with pytest.raises(manager.PackageError):
+        manager.install(project, manager.Registry(registry_root))
+    assert not (project / manager.PACKAGES_DIR / "مشبوه").exists()
+
+
+def test_checksum_map_rejects_paths_outside_the_package(tmp_path: Path):
+    manifest_path = tmp_path / manager.MANIFEST_NAME
+    write_raw_manifest(
+        manifest_path,
+        {
+            "الاسم": "تطبيق",
+            "الإصدار": "1.0.0",
+            "البصمات": {"../خارج.arb": "a" * 64},
+        },
+    )
+    with pytest.raises(PackageError):
+        manager.read_manifest(manifest_path)
+
+
 def test_install_rejects_traversal_without_touching_the_project(tmp_path: Path):
     project = tmp_path / "مشروع"
     project.mkdir()

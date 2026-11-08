@@ -36,8 +36,15 @@ jobs:
       - name: Type check (mypy)
         run: python -m mypy
 
+      - name: Docs links
+        run: python -m tools.check_links
+
       - name: Test (pytest)
         run: python -m pytest
+
+      - name: Benchmark (informational, never fails the build)
+        continue-on-error: true
+        run: python -m tools.bench
 
       - name: Reference examples compile
         shell: bash

@@ -293,6 +293,87 @@ def test_main_without_args_starts_repl(monkeypatch):
     assert called == [1]
 
 
+def test_repl_multiline_nested_blocks():
+    out: list[str] = []
+    code = run_repl(
+        input_fn=make_input(
+            ["كرر 2 مرات", "لو صح", 'اطبع "جوّه"', "خلاص", "خلاص", "خروج"]
+        ),
+        out=out.append,
+        err=lambda _text: None,
+    )
+    assert code == 0
+    assert [line for line in out if line == "جوّه"] == ["جوّه", "جوّه"]
+
+
+def test_repl_continues_an_expression_inside_parens():
+    out: list[str] = []
+    code = run_repl(
+        input_fn=make_input(["خلي س = (1 +", "2)", "اطبع س", "خروج"]),
+        out=out.append,
+        err=lambda _text: None,
+    )
+    assert code == 0
+    assert "3" in out
+
+
+def test_repl_unterminated_string_reports_and_keeps_going():
+    out: list[str] = []
+    err: list[str] = []
+    code = run_repl(
+        input_fn=make_input(['اطبع "ناقص', 'اطبع "كملنا"', "خروج"]),
+        out=out.append,
+        err=err.append,
+    )
+    assert code == 0
+    assert "E1002" in "\n".join(err)
+    assert "كملنا" in out
+
+
+# ---------------------------------------------------------------- projects
+
+
+def test_init_creates_a_runnable_project(tmp_path, capsys):
+    project = tmp_path / "مشروعي"
+    assert main(["init", str(project)]) == 0
+    assert (project / "حزمة.json").is_file()
+    assert (project / "رئيسي.arb").is_file()
+    assert "اتعمل" in capsys.readouterr().out
+
+    assert main(["run", str(project / "رئيسي.arb")]) == 0
+    assert "أهلا بالعالم" in capsys.readouterr().out
+
+
+def test_init_never_overwrites_existing_files(tmp_path, capsys):
+    project = tmp_path / "موجود"
+    project.mkdir()
+    entry = project / "رئيسي.arb"
+    entry.write_text('اطبع "مخصص"\n', encoding="utf-8")
+    (project / "حزمة.json").write_text('{"الاسم": "قديم"}', encoding="utf-8")
+
+    assert main(["init", str(project)]) == 0
+    assert entry.read_text(encoding="utf-8") == 'اطبع "مخصص"\n'
+    assert "موجود بالفعل" in capsys.readouterr().out
+
+
+def test_doctor_accepts_a_fresh_project(tmp_path, capsys):
+    project = tmp_path / "سليم"
+    assert main(["init", str(project)]) == 0
+    capsys.readouterr()
+
+    assert main(["doctor", str(project)]) == 0
+    assert "تمام" in capsys.readouterr().out
+
+
+def test_doctor_reports_a_broken_manifest(tmp_path, capsys):
+    project = tmp_path / "خربان"
+    project.mkdir()
+    (project / "حزمة.json").write_text("{", encoding="utf-8")
+
+    assert main(["doctor", str(project)]) == 1
+    assert "حزمة.json" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("exit_word", ["خروج", "exit", "quit"])
 def test_repl_exit_words(exit_word):
     out: list[str] = []

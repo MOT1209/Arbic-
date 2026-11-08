@@ -8,6 +8,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -33,15 +34,30 @@ from al_arabiya.vm.vm import VM
 __all__ = ["main"]
 
 _COMMANDS = frozenset(
-    {"run", "check", "bench", "repl", "lsp", "packages", "حزمة", "version", "help"}
+    {
+        "run",
+        "check",
+        "bench",
+        "repl",
+        "lsp",
+        "packages",
+        "حزمة",
+        "init",
+        "doctor",
+        "version",
+        "help",
+    }
 )
 
 
 def _configure_stdio() -> None:
     for stream in (sys.stdout, sys.stderr, sys.stdin):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
         try:
-            stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-        except (AttributeError, ValueError, OSError):
+            reconfigure(encoding="utf-8")
+        except (ValueError, OSError):
             pass
 
 
@@ -51,20 +67,20 @@ def _emit_diagnostics(diagnostics: Iterable[Diagnostic], source: SourceFile) -> 
         sys.stderr.write(text + "\n")
 
 
-def _read_source(path: str) -> str | None:
+def _read_source(path: str) -> SourceFile | None:
+    """Read a program once, through the same abstraction diagnostics render from."""
     try:
-        with open(path, encoding="utf-8-sig") as handle:
-            return handle.read()
+        return SourceFile.from_path(path)
     except OSError:
         sys.stderr.write(f"❌ مش لاقي الملف: {path}\n")
         return None
 
 
 def cmd_run(path: str, use_vm: bool = False) -> int:
-    text = _read_source(path)
-    if text is None:
+    source = _read_source(path)
+    if source is None:
         return 2
-    result = compile_source(text, path)
+    result = compile_source(source.text, path)
     if result.diagnostics:
         _emit_diagnostics(result.diagnostics, result.source)
     if result.program is None:
@@ -99,10 +115,10 @@ def cmd_run(path: str, use_vm: bool = False) -> int:
 
 
 def cmd_bench(path: str, iterations: int = 3) -> int:
-    text = _read_source(path)
-    if text is None:
+    source = _read_source(path)
+    if source is None:
         return 2
-    result = compile_source(text, path)
+    result = compile_source(source.text, path)
     if result.diagnostics:
         _emit_diagnostics(result.diagnostics, result.source)
     if result.program is None:
@@ -140,10 +156,10 @@ def cmd_bench(path: str, iterations: int = 3) -> int:
 
 
 def cmd_check(path: str) -> int:
-    text = _read_source(path)
-    if text is None:
+    source = _read_source(path)
+    if source is None:
         return 2
-    result = compile_source(text, path)
+    result = compile_source(source.text, path)
     if result.diagnostics:
         _emit_diagnostics(result.diagnostics, result.source)
     if result.has_errors:
@@ -219,6 +235,104 @@ def cmd_packages(rest: list[str]) -> int:
     return 2
 
 
+def cmd_init(rest: list[str]) -> int:
+    from al_arabiya.packages import manager
+
+    positional = [argument for argument in rest if not argument.startswith("-")]
+    if len(positional) > 1:
+        sys.stderr.write("استخدام: arabic init [مجلد]\n")
+        return 2
+
+    project = Path(positional[0]) if positional else Path.cwd()
+    try:
+        project.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        sys.stderr.write(f"❌ مش قادر أعمل المجلد: {exc}\n")
+        return 2
+
+    manifest = project / manager.MANIFEST_NAME
+    entry = project / "رئيسي.arb"
+    created: list[str] = []
+    if not manifest.exists():
+        payload = {
+            "الاسم": project.resolve().name,
+            "الإصدار": "0.1.0",
+            "الاعتماديات": {},
+        }
+        manifest.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        created.append(manager.MANIFEST_NAME)
+    if not entry.exists():
+        entry.write_text('اطبع "أهلا بالعالم!"\n', encoding="utf-8")
+        created.append(entry.name)
+
+    if created:
+        print("اتعمل مشروع جديد: " + "، ".join(created))
+    else:
+        print("المشروع موجود بالفعل — ملمستش أي ملف.")
+    return 0
+
+
+def cmd_doctor(rest: list[str]) -> int:
+    from al_arabiya.packages import manager
+
+    positional = [argument for argument in rest if not argument.startswith("-")]
+    project = Path(positional[0]) if positional else Path.cwd()
+    problems = 0
+
+    def good(label: str) -> None:
+        print(f"✓ {label}")
+
+    def bad(label: str, detail: str) -> None:
+        nonlocal problems
+        problems += 1
+        sys.stderr.write(f"✗ {label}: {detail}\n")
+
+    # requires-python already pins >=3.12 at install time, so this is a report,
+    # not a check.
+    good(f"Python {sys.version.split()[0]}")
+
+    encoding = (sys.stdout.encoding or "").lower()
+    if not encoding or "utf" in encoding:
+        good(f"ترميز المخرجات: {encoding or 'افتراضي'}")
+    else:
+        bad("ترميز المخرجات", f"'{encoding}' مش UTF — النص العربي ممكن يتقطع")
+
+    manifest_path = project / manager.MANIFEST_NAME
+    if manifest_path.is_file():
+        try:
+            parsed = manager.read_manifest(manifest_path)
+        except manager.PackageError as exc:
+            bad("حزمة.json", str(exc))
+        else:
+            good(f"حزمة.json: {parsed.name} {parsed.version}")
+    else:
+        good("مفيش حزمة.json (مش مطلوب للتشغيل)")
+
+    if (project / manager.LOCKFILE_NAME).is_file():
+        try:
+            locked = manager.read_lockfile(project)
+        except (OSError, ValueError) as exc:
+            bad("ملف القفل", str(exc))
+        else:
+            good(f"ملف القفل: {len(locked)} حزمة")
+
+    registry = _registry_path(rest) or os.environ.get("ARABIC_REGISTRY")
+    if registry is None:
+        good("مفيش سجلّ حزم مضبوط (مش مطلوب للتشغيل)")
+    elif Path(registry).is_dir():
+        good(f"السجلّ: {registry}")
+    else:
+        bad("السجلّ", f"مش لاقي المجلد: {registry}")
+
+    if problems:
+        sys.stderr.write(f"فيه {problems} مشكلة." + "\n")
+        return 1
+    print("كل حاجة تمام.")
+    return 0
+
+
 def cmd_version() -> int:
     print(f"arabic {__version__} — AlArabiya / العربية")
     return 0
@@ -235,6 +349,8 @@ def cmd_help() -> int:
         "  arabic repl             وضع التفاعل المباشر\n"
         "  arabic lsp              خادم المحرّر (Language Server عبر stdio)\n"
         "  arabic packages install تثبيت الحزم من السجلّ المحلّي (في حزم/)\n"
+        "  arabic init [مجلد]     يعمل حزمة.json وملف بداية\n"
+        "  arabic doctor [مجلد]   يفحص البيئة والمشروع\n"
         "  arabic version          إصدار اللغة\n"
         "  arabic help             هذه المساعدة\n"
         "\n"
@@ -275,6 +391,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_version()
     if name == "help":
         return cmd_help()
+    if name == "init":
+        return cmd_init(rest)
+    if name == "doctor":
+        return cmd_doctor(rest)
 
     use_vm = "--vm" in rest
     files = [argument for argument in rest if not argument.startswith("-")]

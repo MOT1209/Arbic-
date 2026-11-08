@@ -8,6 +8,8 @@ tree-walking interpreter — the VM never silently changes behavior.
 
 from __future__ import annotations
 
+from typing import TypedDict, cast
+
 from al_arabiya.compiler.ast.nodes import (
     Assignment,
     ASTNode,
@@ -40,6 +42,7 @@ from al_arabiya.compiler.ast.nodes import (
     WhileStatement,
 )
 from al_arabiya.compiler.lexer.positions import Span
+from al_arabiya.runtime.values import Value
 from al_arabiya.vm.captures import captured_local_names
 from al_arabiya.vm.chunk import Chunk, ImportSpec, VMFunction
 from al_arabiya.vm.opcodes import Op
@@ -130,6 +133,13 @@ def _stmt_escapes(node: Statement, *, loop_depth: int) -> bool:
     return False
 
 
+_Loop = TypedDict(
+    "_Loop",
+    {"kind": str, "continue": int, "breaks": list[int]},
+)
+"""One active loop: its kind, its continue jump target and pending break jumps."""
+
+
 class _FunctionState:
     """Per-function compilation state (its chunk, locals, upvalues, loops)."""
 
@@ -137,8 +147,7 @@ class _FunctionState:
         self.chunk = Chunk()
         self.is_script = is_script
         self.locals: list[str] = []
-        # each loop: {"kind": str, "continue": target, "breaks": [positions]}
-        self.loops: list[dict[str, object]] = []
+        self.loops: list[_Loop] = []
         self.captured: set[str] = set()  # local names an inner function captures
         self.cell_slots: set[int] = set()  # slots boxed in a Cell
         self.upvalues: list[tuple[bool, int]] = []  # (is_local, index)
@@ -196,8 +205,10 @@ class BytecodeCompiler:
     def _patch(self, position: int) -> None:
         self._state.chunk.code[position] = self._here()
 
-    def _constant(self, value: object) -> int:
-        self._state.chunk.constants.append(value)  # type: ignore[arg-type]
+    def _constant(self, value: Value | ImportSpec | VMFunction) -> int:
+        # The pool also carries function prototypes and import specs; the VM
+        # narrows each constant by the opcode that loads it.
+        self._state.chunk.constants.append(cast(Value, value))
         return len(self._state.chunk.constants) - 1
 
     def _resolve_local(self, name: str) -> int | None:
@@ -374,7 +385,7 @@ class BytecodeCompiler:
 
     def _end_loop(self) -> None:
         loop = self._state.loops.pop()
-        for position in loop["breaks"]:  # type: ignore[attr-defined]
+        for position in loop["breaks"]:
             self._patch(position)
 
     def _loop_jump(self, node: Statement, *, is_break: bool) -> None:
@@ -388,10 +399,10 @@ class BytecodeCompiler:
             elif kind == "repeat":
                 self._emit(Op.REP_POP, node.span)
             position = self._emit_jump(Op.JUMP, node.span)
-            loop["breaks"].append(position)  # type: ignore[attr-defined]
+            loop["breaks"].append(position)
         else:
             self._emit(Op.JUMP, node.span)
-            self._emit_arg(loop["continue"])  # type: ignore[arg-type]
+            self._emit_arg(loop["continue"])
 
     def _try(self, node: TryStatement) -> None:
         has_catch = node.catch_body is not None

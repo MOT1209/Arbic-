@@ -10,7 +10,7 @@
 
 ```bash
 pip install -e ".[dev]"
-python tools/check.py      # pytest + ruff + mypy مع بعض
+python tools/check.py      # ruff + mypy + روابط الوثائق + pytest مع بعض
 ```
 
 ---
@@ -30,7 +30,7 @@ al_arabiya/
 │   └── interpreter/       # Environment, Interpreter
 └── cli/                   # main.py (أوامر) + repl.py (REPL)
 legacy/masry.py            # المترجم القديم (للرجوعية)
-tests/                     # 523 اختبار (unit + integration + regression + contracts + fuzz + security)
+tests/                     # 571 اختبار (unit + integration + regression + contracts + fuzz + property + security)
 ```
 
 ---
@@ -59,7 +59,7 @@ mypy                          # أنواع صارمة (strict)
 4. **عقدة AST** → `dataclass` جديد في `ast/nodes.py` + زر في `visit_*` بالـ interpreter (وأي دوال `check_*`).
 5. **كود خطأ** → أضف في `ErrorCode` (بنمط `E####`) واستخدمه.
 
-بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **523/523** واختبارات الرجوعية (goldens) مطابقة.
+بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **571/571** واختبارات الرجوعية (goldens) مطابقة.
 
 ---
 
