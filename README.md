@@ -102,6 +102,8 @@ pip install -e .
 - [`docs/architecture/bytecode-vm.md`](docs/architecture/bytecode-vm.md) — آلة البايت-كود والأداء
 - [`docs/tools/packages.md`](docs/tools/packages.md) — مدير الحزم المحلّي
 - [`docs/development/guide.md`](docs/development/guide.md) — إعداد بيئة التطوير والاختبارات
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — قواعد المساهمة والبوابات المطلوبة
+- [`SECURITY.md`](SECURITY.md) — الإبلاغ عن الثغرات وحدود العزل الحالية
 - [`docs/architecture/phase-1-analysis.md`](docs/architecture/phase-1-analysis.md) — تحليل البنية القديمة وخطة البناء
 
 ---
@@ -128,7 +130,7 @@ pip install -e .
 ## 🧪 الاختبارات
 
 ```bash
-pytest              # 419 اختبار
+pytest              # 424 اختبار
 ruff check .        # الـ lint
 mypy                # التحقق الصارم للأنواع
 python tools/check.py   # الثلاثة مع بعض

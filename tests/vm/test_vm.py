@@ -148,6 +148,16 @@ def test_unhashable_key():
     assert vm_error("اطبع {[1]: 2}").diagnostic.code == ErrorCode.UNHASHABLE_KEY
 
 
+def test_negative_repeat_count():
+    source = "كرر -2 مرات\n    اطبع 1\nخلاص"
+    assert vm_error(source).diagnostic.code == ErrorCode.INVALID_REPEAT_COUNT
+
+
+def test_fractional_repeat_count():
+    source = "كرر 2.5 مرات\n    اطبع 1\nخلاص"
+    assert vm_error(source).diagnostic.code == ErrorCode.INVALID_REPEAT_COUNT
+
+
 def test_uncaught_throw():
     assert vm_error('ارم "خطأ"').diagnostic.code == ErrorCode.UNCAUGHT_ERROR
 

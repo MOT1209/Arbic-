@@ -521,6 +521,20 @@ class VM:
                 span,
                 "مثال: كرر 3 مرات",
             )
+        if isinstance(count, float) and not count.is_integer():
+            raise self._error(
+                ErrorCode.INVALID_REPEAT_COUNT,
+                "عدد التكرار لازم يكون عدد صحيح",
+                span,
+                "مثال: كرر 3 مرات",
+            )
+        if count < 0:
+            raise self._error(
+                ErrorCode.INVALID_REPEAT_COUNT,
+                "عدد التكرار مينفعش يكون سالب",
+                span,
+                "استخدم صفر أو عدد موجب",
+            )
         return int(count)
 
     # --------------------------------------------------------------- arithmetic

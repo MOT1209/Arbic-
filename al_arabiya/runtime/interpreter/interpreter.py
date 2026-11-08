@@ -249,6 +249,26 @@ class Interpreter(ASTVisitor):
                     suggestion="مثال: كرر 3 مرات",
                 )
             )
+        if isinstance(count, float) and not count.is_integer():
+            raise ArabiyaRuntimeError(
+                Diagnostic(
+                    code=ErrorCode.INVALID_REPEAT_COUNT,
+                    severity=Severity.ERROR,
+                    message="عدد التكرار لازم يكون عدد صحيح",
+                    span=node.count.span,
+                    suggestion="مثال: كرر 3 مرات",
+                )
+            )
+        if count < 0:
+            raise ArabiyaRuntimeError(
+                Diagnostic(
+                    code=ErrorCode.INVALID_REPEAT_COUNT,
+                    severity=Severity.ERROR,
+                    message="عدد التكرار مينفعش يكون سالب",
+                    span=node.count.span,
+                    suggestion="استخدم صفر أو عدد موجب",
+                )
+            )
         for _ in range(int(count)):
             try:
                 for statement in node.body:

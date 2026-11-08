@@ -271,6 +271,22 @@ def test_repeat_count_must_be_number():
     assert error.diagnostic.code == ErrorCode.INVALID_REPEAT_COUNT
 
 
+def test_repeat_negative_count_errors():
+    error = runtime_error("كرر -2 مرات\n    اطبع 1\nخلاص")
+    assert error.diagnostic.code == ErrorCode.INVALID_REPEAT_COUNT
+    assert "سالب" in error.diagnostic.message
+
+
+def test_repeat_fractional_count_errors():
+    error = runtime_error("كرر 2.5 مرات\n    اطبع 1\nخلاص")
+    assert error.diagnostic.code == ErrorCode.INVALID_REPEAT_COUNT
+    assert "صحيح" in error.diagnostic.message
+
+
+def test_repeat_whole_float_count_runs():
+    assert run("كرر 3.0 مرات\n    اطبع \"أ\"\nخلاص") == "أ\nأ\nأ"
+
+
 def test_loop_guard(monkeypatch):
     import al_arabiya.runtime.interpreter.interpreter as interpreter_module
 
