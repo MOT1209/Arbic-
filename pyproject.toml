@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/ahmedfox1/masry"
+Repository = "https://github.com/MOT1209/Arbic-"
 
 [project.scripts]
 arabic = "al_arabiya.cli.main:main"

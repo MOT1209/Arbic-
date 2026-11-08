@@ -20,3 +20,12 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local credential caches and shell logs — never commit these
+cmdkey_all.txt
+gh_code.txt
+gh_code_err.txt
+gh_login.txt
+gh_login_err.txt
+push_err.txt
+push_log.txt

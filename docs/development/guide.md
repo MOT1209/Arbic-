@@ -21,9 +21,8 @@ python tools/check.py      # pytest + ruff + mypy مع بعض
 al_arabiya/
 ├── __main__.py            # python -m al_arabiya
 ├── compiler/
-│   ├── positions.py       # Position / Span
 │   ├── diagnostics/       # SourceFile, ErrorCode, Diagnostic, DiagnosticBag
-│   ├── lexer/             # TokenType, KEYWORDS, Lexer
+│   ├── lexer/             # positions.py, tokens.py, lexer.py
 │   ├── parser/            # precedence.py + Parser (Pratt / precedence climbing)
 │   ├── ast/               # nodes (dataclass) + visitor
 │   └── frontend.py        # compile_source() → FrontendResult
@@ -31,7 +30,7 @@ al_arabiya/
 │   └── interpreter/       # Environment, Interpreter
 └── cli/                   # main.py (أوامر) + repl.py (REPL)
 legacy/masry.py            # المترجم القديم (للرجوعية)
-tests/                     # 200 اختبار (unit + integration + regression)
+tests/                     # 211 اختبار (unit + integration + regression + contracts)
 ```
 
 ---
@@ -53,23 +52,21 @@ mypy                          # أنواع صارمة (strict)
 
 ## امتدادات مضافة (كيف تضيف ميزة)
 
-1. **كلمة مفتاحية جديدة** → أضفها في `KEYWORDS` + `TokenType` + `token_kind_of` (لو keyword) في `lexer/tokens.py`.
+1. **كلمة مفتاحية جديدة** → أضف عضو `KW_*` في `TokenType` داخل `lexer/tokens.py`؛ قاموس `KEYWORDS` بيتبني تلقائيًا من الأعضاء دي.
 2. **عامل/أوّلية جديدة** → `parser/precedence.py` + سطر في `_peek_infix`/`_peek_prefix`.
 3. **أمر جديد** → case جديد في `parse_statement`.
 4. **عقدة AST** → `dataclass` جديد في `ast/nodes.py` + زر في `visit_*` بالـ interpreter (وأي دوال `check_*`).
 5. **كود خطأ** → أضف في `ErrorCode` (بنمط `E####`) واستخدمه.
 
-بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **200/200** واختبارات الرجوعية (goldens) مطابقة.
+بعد أي تعديل شغّل `python tools/check.py` — لازم يفضل **211/211** واختبارات الرجوعية (goldens) مطابقة.
 
 ---
 
 ## اختبارات الرجوعية
 
-`tests/regression/` فيه 7 برامج `programs/*.arb` + مخرجاتها `expected/*.txt` **اللي اتولّدت من `legacy/masry.py`**. الاختبار بيشغّل البرنامج الحالي ومقارن السطور بالظبط (ولو الملف `.masr` شغّله بنفس goldens). عشان تولّد goldens جديدة:
+`tests/regression/` فيه 7 برامج `programs/*.arb` + مخرجاتها `expected/*.txt` **اللي اتولّدت من `legacy/masry.py`**. الاختبار بيشغّل البرنامج الحالي ومقارن السطور بالظبط، وكمان بيعيد تشغيل `legacy/masry.py` نفسه ويقارن (ولو الملف `.masr` شغّله بنفس goldens).
 
-```bash
-python -X utf8 tools/gen_goldens.py   # لو موجود، أو عدّل يدويًا بعد مراجعة الفرق
-```
+**مفيش سكربت لتوليد الـ goldens** — التوليد اتعمل مرة من الـ legacy، وأي تحديث بعد كده بيبقى يدوي بعد مراجعة الفرق سطر بسطر.
 
 **القاعدة**: ما تغيّرش goldens لمجرد إن الجديد "أصح" — افهم الفرق الأول.
 
