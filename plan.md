@@ -2,7 +2,7 @@
 
 # خطة العمل المتبقية — AlArabiya
 
-> **آخر تحديث:** 2026-11-09 · **خط الأساس:** `bd0dcd8` · **البوابات الحالية:** 775 اختبارًا مجموعًا (771 ناجح + 4 skip على Windows) · `ruff` نضيف · `mypy strict` على 47 ملف · CI أخضر على Ubuntu/Windows × 3.12/3.13/3.14.
+> **آخر تحديث:** 2026-11-09 · **خط الأساس:** `bd0dcd8` · **البوابات الحالية:** 789 اختبارًا مجموعًا (785 ناجح + 4 skip على Windows) · `ruff` نضيف · `mypy strict` على 47 ملف · CI أخضر على Ubuntu/Windows × 3.12/3.13/3.14.
 
 البنود هنا هي **فقط** ما لم يُنفَّذ، أو نُفِّذ جزئيًا بحدود مكتوبة. كل بند مغلق لا يُعاد فتحه. الحالة التفصيلية في [`docs/current-feature-status.md`](docs/current-feature-status.md)، والدين في [`docs/technical-debt.md`](docs/technical-debt.md)، والمراحل في [`docs/arbic-2.0-roadmap.md`](docs/arbic-2.0-roadmap.md).
 
@@ -56,7 +56,9 @@
 
 ### Phase 9 — أدوات المطوّر (الناقص)
 
-- [ ] **formatter كامل:** تخطيط وفواصل ومسافات حول العمليات، مع idempotency؛ الحالي مسافات فقط.
+- [x] **formatter كامل:** تخطيط وفواصل ومسافات حول العمليات، مع idempotency.
+  > **منفّذ:** `al_arabiya/formatter.py` — إعادة تخطيط من الـtokens (مسافات قانونية،
+  > محاذاة كتل بالسـstack، تعليقات محفوظة)، مع تحقق تطابق الـtokens قبل الكتابة.
 - [ ] **LSP:** `definition`، `references`، `rename`، `signatureHelp`، `codeAction` — الموجود حاليًا `hover`/`completion`/`documentSymbol` بس.
 - [ ] **debugger:** دعم VM، نقاط شرطية/`hitCondition`/logpoints، `evaluate`، متغيرات قابلة للتوسيع، `terminate` أثناء التشغيل، تتبّع الوحدات المستوردة.
 - [ ] **VS Code:** تسجيل لغة `arabic` وتلوين نحوي، تجربة الإضافة على المحرّر فعليًا، ثم النشر على السوق.

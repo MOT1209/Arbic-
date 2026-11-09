@@ -250,7 +250,8 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 مفيش: وراثة متعددة، وراثة واجهات/default methods،
 `ثابت`، sets/tuples، شرائح، interpolation، async/await،
 playground، سجلّ حزم على الإنترنت، Python interop، IR،
-optimizer. والمنسّق (`arabic format`) بيوحّد المسافات بس، وعزل التنفيذ
+optimizer. والمنسّق (`arabic format`) بيعيد تخطيط المسافات والكتل من غير كسر
+السطور الطويلة، وعزل التنفيذ
 (`--sandbox`) بيشغّل عاملًا منفصلًا بحدود وقت/ذاكرة/مخرجات، وعلى Linux x86_64
 بيحجب الشبكة وكتابة الملفات بـ seccomp؛ Windows/macOS لسه بدون حجب OS
 ([sandbox-design.md](architecture/sandbox-design.md)).

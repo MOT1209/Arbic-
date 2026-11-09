@@ -598,7 +598,7 @@ def cmd_help() -> int:
         "  arabic check <ملف.arb>  تحليل بدون تشغيل (--strict للوضع الصارم)\n"
         "  arabic build [مجلد]    تحقق شامل من كل ملفات المشروع\n"
         "  arabic test [مجلد]     يشغّل ملفات اختبارات/*.arb\n"
-        "  arabic format [مسار]   ينسّق المسافات (--check يعرض من غير ما يكتب)\n"
+        "  arabic format [مسار]   يعيد تخطيط الكود (--check يعرض من غير ما يكتب)\n"
         "  arabic bench <ملف.arb>  مقارنة سرعة المفسّر بآلة البايت-كود\n"
         "  arabic debug <ملف.arb>  خادم تصحيح (DAP) على stdio\n"
         "  arabic repl             وضع التفاعل المباشر\n"

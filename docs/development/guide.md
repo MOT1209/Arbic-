@@ -28,7 +28,7 @@ al_arabiya/
 │   └── frontend.py        # compile_source() → FrontendResult
 ├── runtime/
 │   └── interpreter/       # Environment, Interpreter
-├── formatter.py            # منسّق مسافات محافظ (بدون إعادة تخطيط)
+├── formatter.py            # منسّق tokens محافظ (مسافات + محاذاة كتل + تعليقات)
 ├── sandbox/                # عامل معزول: worker.py + حدود OS + limits_linux.py (seccomp)
 ├── stdlib/                 # وحدات قياسية بلغة العربية: نصوص/قوائم/رياضيات
 ├── debugger/               # خادم DAP + محرّك تتبّع فوق المفسّر
@@ -47,7 +47,7 @@ arabic run --sandbox مثال.arb # تشغيل داخل عامل معزول
 arabic check مثال.arb         # فحص بدون تشغيل
 arabic build                  # تحقق من كل ملفات المشروع
 arabic test                   # يشغّل اختبارات/*.arb
-arabic format . --check       # منسّق المسافات (معاينة)
+arabic format . --check       # منسّق الكود (معاينة)
 arabic repl                   # تفاعلي
 python -m tools.bench          # قياس المفسّر مقابل VM (مش جزء من البوابة)
 pytest                        # كل الاختبارات

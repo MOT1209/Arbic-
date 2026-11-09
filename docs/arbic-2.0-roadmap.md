@@ -203,6 +203,12 @@
 
 **البوابة:** formatter يعطي نفس الناتج عند التطبيق مرتين؛ LSP يستهلك نفس `DiagnosticBag`؛ debugger يعمل على المحركين.
 
+**الحالة: 🟡** — `formatter` كامل وidempotent (مسافات قانونية، محاذاة كتل،
+تعليقات محفوظة، تحقق tokens قبل الكتابة). LSP عنده تشخيصات/hover/إكمال/
+`documentSymbol` بس — ناقص `definition`/`references`/`rename`/`signatureHelp`/
+`codeAction`. debugger DAP للمفسّر بس (مش VM). إضافة VS Code مصدر بدون تجربة
+على المحرّر.
+
 ---
 
 ### Phase 10 — Playground والإصدار 2.0
