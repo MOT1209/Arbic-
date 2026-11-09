@@ -29,7 +29,12 @@ from al_arabiya.compiler.lexer.positions import Span
 from al_arabiya.runtime.builtins import make_global_env
 from al_arabiya.runtime.interpreter.environment import Environment
 from al_arabiya.runtime.interpreter.interpreter import Interpreter
-from al_arabiya.runtime.values import ArabiyaFunction, Value, format_value
+from al_arabiya.runtime.values import (
+    ArabiyaFunction,
+    LambdaFunction,
+    Value,
+    format_value,
+)
 
 __all__ = ["DebugSession", "main"]
 
@@ -111,7 +116,10 @@ class _DebugInterpreter(Interpreter):
         return super().visit(node)
 
     def _call_function(
-        self, fn: ArabiyaFunction, arguments: list[Value], span: Span
+        self,
+        fn: ArabiyaFunction | LambdaFunction,
+        arguments: list[Value],
+        span: Span,
     ) -> Value:
         self.frames.append(_Frame(fn.name, fn.declaration.span.start.line, self.environment))
         try:

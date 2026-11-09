@@ -20,6 +20,7 @@ arabic run examples/hello.arb
 - **أرقام عربية (٠-٩) وإنجليزية**، وفاصلة عشرية `٫` وفاصلة آلاف `٬`
 - **نصوص (strings)** بمحارف هروب كاملة `\n \t \" \\ \u{...}`
 - **دوال** `دالة ... رجّع ... خلاص` (قيم من الدرجة الأولى + closures + تكرار ذاتي)
+- **أصناف** `صنف ... خلاص` بخصائص (`انا.اسم`) وطرق وطرق ساكنة، ووراثة مفردة (`صنف طالب يرث شخص`) مع `الأساس` لنداء الأب، وتغليف بـ`خاص` وواجهات بـ`واجهة`/`ينفذ`
 - **قوائم وقواميس**: `[1، 2]` و`{"مفتاح": قيمة}` مع الفهرسة والتعديل
 - **حلقة `لكل`** للمرور على القوائم والنصوص والقواميس
 - **وحدات واستيراد**: `استورد "ملف"` · `باسم` · `من ... استورد`
@@ -107,6 +108,7 @@ pip install -e .
 - [`docs/language/syntax.md`](docs/language/syntax.md) — قواعد اللغة والقواعد النحوية
 - [`docs/language/stdlib.md`](docs/language/stdlib.md) — المكتبة المدمجة (الدوال الجاهزة)
 - [`examples/types.arb`](examples/types.arb) — تعليقات الأنواع والفحص الثابت (`arabic check`)
+- [`examples/classes.arb`](examples/classes.arb) — الأصناف والخصائص والطرق الساكنة والوراثة والتغليف والواجهات
 - [`docs/tools/lsp.md`](docs/tools/lsp.md) — خادم المحرّر (LSP) وربطه بـ VS Code
 - [`docs/architecture/bytecode-vm.md`](docs/architecture/bytecode-vm.md) — آلة البايت-كود والأداء
 - [`docs/tools/packages.md`](docs/tools/packages.md) — مدير الحزم المحلّي

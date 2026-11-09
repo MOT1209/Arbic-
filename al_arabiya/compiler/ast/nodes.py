@@ -17,9 +17,11 @@ __all__ = [
     "BinaryExpression",
     "BreakStatement",
     "CallExpression",
+    "ClassDeclaration",
     "ContinueStatement",
     "Expression",
     "ExpressionStatement",
+    "FieldDeclaration",
     "ForEachStatement",
     "FunctionDeclaration",
     "Identifier",
@@ -27,9 +29,14 @@ __all__ = [
     "ImportStatement",
     "IndexAssignment",
     "IndexExpression",
+    "InterfaceDeclaration",
+    "LambdaExpression",
     "ListLiteral",
     "Literal",
     "MapLiteral",
+    "MemberAssignment",
+    "MemberExpression",
+    "MethodDeclaration",
     "NullLiteral",
     "Parameter",
     "PrintStatement",
@@ -156,6 +163,59 @@ class FunctionDeclaration(Statement):
 
 
 @dataclass(slots=True)
+class MethodDeclaration(ASTNode):
+    """One method inside a ``صنف`` body.
+
+    ``is_static`` marks ``دالة ساكنة``: a method called on the class itself,
+    with no implicit ``انا`` instance.
+    """
+
+    name: str
+    name_span: Span
+    parameters: list[Parameter]
+    body: list[Statement]
+    return_type: TypeName | None = None
+    is_static: bool = False
+    is_private: bool = False
+    is_abstract: bool = False
+
+    @property
+    def params(self) -> list[Parameter]:
+        """Alias used by the runtime callable value."""
+        return self.parameters
+
+
+@dataclass(slots=True)
+class FieldDeclaration(ASTNode):
+    """One private field declared with ``خاص <name>`` inside a class body."""
+
+    name: str
+    name_span: Span
+
+
+@dataclass(slots=True)
+class ClassDeclaration(Statement):
+    """``صنف <name> [يرث <base>] [ينفذ <iface>] ... خلاص``."""
+
+    name: str
+    name_span: Span
+    methods: list[MethodDeclaration] = field(default_factory=list)
+    base_name: str | None = None
+    base_span: Span | None = None
+    private_fields: list[FieldDeclaration] = field(default_factory=list)
+    interfaces: list[TypeName] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class InterfaceDeclaration(Statement):
+    """``واجهة <name> ... خلاص`` — method signatures only."""
+
+    name: str
+    name_span: Span
+    methods: list[MethodDeclaration] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ReturnStatement(Statement):
     """``رجّع <expr>`` (the expression is optional)."""
 
@@ -175,6 +235,16 @@ class IndexAssignment(Statement):
 
     collection: Expression
     index: Expression
+    value: Expression
+
+
+@dataclass(slots=True)
+class MemberAssignment(Statement):
+    """``<target>.<name> = <value>`` — assigns an instance field."""
+
+    target: Expression
+    name: str
+    name_span: Span
     value: Expression
 
 
@@ -267,6 +337,29 @@ class IndexExpression(Expression):
 
     target: Expression
     index: Expression
+
+
+@dataclass(slots=True)
+class LambdaExpression(Expression):
+    """An anonymous function: ``دالة (<params>) ... خلاص`` used as a value."""
+
+    parameters: list[Parameter]
+    body: list[Statement]
+    return_type: TypeName | None = None
+
+    @property
+    def params(self) -> list[Parameter]:
+        """Alias used by the runtime callable value."""
+        return self.parameters
+
+
+@dataclass(slots=True)
+class MemberExpression(Expression):
+    """``<target>.<name>`` — reads an instance field or binds a method."""
+
+    target: Expression
+    name: str
+    name_span: Span
 
 
 @dataclass(slots=True)

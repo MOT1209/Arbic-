@@ -16,6 +16,7 @@ from al_arabiya.compiler.ast.nodes import (
     BinaryExpression,
     BreakStatement,
     CallExpression,
+    ClassDeclaration,
     ContinueStatement,
     Expression,
     ExpressionStatement,
@@ -26,9 +27,13 @@ from al_arabiya.compiler.ast.nodes import (
     ImportStatement,
     IndexAssignment,
     IndexExpression,
+    InterfaceDeclaration,
+    LambdaExpression,
     ListLiteral,
     Literal,
     MapLiteral,
+    MemberAssignment,
+    MemberExpression,
     NullLiteral,
     PrintStatement,
     Program,
@@ -91,6 +96,13 @@ def _children(node: ASTNode) -> list[ASTNode]:
 
 
 def _unsupported(node: ASTNode) -> str | None:
+    if isinstance(
+        node,
+        (ClassDeclaration, InterfaceDeclaration, MemberExpression, MemberAssignment),
+    ):
+        return "'صنف'/'واجهة' والوصول للأعضاء لسه مش مدعومين على الـ VM"
+    if isinstance(node, LambdaExpression):
+        return "'دالة مجهولة' (lambda) لسه مش مدعومة على الـ VM"
     if isinstance(node, TryStatement) and _try_has_escaping_jump(node):
         return "'حاول' مع 'رجّع/اكسر/كمل' بيعدّي 'أخيرا'"
     for child in _children(node):

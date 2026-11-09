@@ -16,6 +16,7 @@ from al_arabiya.compiler.ast.nodes import (
     BinaryExpression,
     BreakStatement,
     CallExpression,
+    ClassDeclaration,
     ContinueStatement,
     Expression,
     ExpressionStatement,
@@ -26,9 +27,14 @@ from al_arabiya.compiler.ast.nodes import (
     ImportStatement,
     IndexAssignment,
     IndexExpression,
+    InterfaceDeclaration,
+    LambdaExpression,
     ListLiteral,
     Literal,
     MapLiteral,
+    MemberAssignment,
+    MemberExpression,
+    MethodDeclaration,
     NullLiteral,
     PrintStatement,
     Program,
@@ -36,6 +42,7 @@ from al_arabiya.compiler.ast.nodes import (
     ReturnStatement,
     ThrowStatement,
     TryStatement,
+    TypeName,
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
@@ -50,8 +57,14 @@ from al_arabiya.runtime.modules import ModuleLoader, module_exports
 from al_arabiya.runtime.values import (
     NULL,
     ArabiyaFunction,
+    BoundMethod,
     BuiltinError,
+    ClassValue,
+    InstanceValue,
+    InterfaceValue,
+    LambdaFunction,
     NativeFunction,
+    SuperValue,
     describe_value,
     format_value,
     is_truthy,
@@ -120,6 +133,10 @@ class Interpreter(ASTVisitor):
         self.write = write
         self.base_dir = base_dir
         self.loader = loader if loader is not None else ModuleLoader(write=write)
+        self._method_classes: list[ClassValue] = []
+
+    def _current_class(self) -> ClassValue | None:
+        return self._method_classes[-1] if self._method_classes else None
 
     def run(self, program: Program) -> None:
         try:
@@ -281,6 +298,186 @@ class Interpreter(ASTVisitor):
     def visit_function_declaration(self, node: FunctionDeclaration) -> None:
         self.environment.define(node.name, ArabiyaFunction(node, self.environment))
 
+    def visit_lambda_expression(self, node: LambdaExpression) -> Value:
+        return LambdaFunction(node, self.environment)
+
+    def visit_interface_declaration(self, node: InterfaceDeclaration) -> None:
+        self.environment.define(
+            node.name, InterfaceValue(node, self.environment)
+        )
+
+    def visit_class_declaration(self, node: ClassDeclaration) -> None:
+        base: ClassValue | None = None
+        if node.base_name is not None:
+            span = node.base_span if node.base_span is not None else node.name_span
+            if not self.environment.has(node.base_name):
+                raise self._control_error(
+                    ErrorCode.INVALID_BASE_CLASS,
+                    f"الصنف الأب '{node.base_name}' مش معرّف",
+                    span,
+                    "عرّف الصنف الأب قبل الابن في نفس الملف",
+                )
+            candidate = self.environment.get(node.base_name, span)
+            if not isinstance(candidate, ClassValue):
+                raise self._control_error(
+                    ErrorCode.INVALID_BASE_CLASS,
+                    f"'{node.base_name}' مش صنف عشان يتورث منه",
+                    span,
+                    "الوراثة بتشتغل مع الأصناف بس",
+                )
+            base = candidate
+
+        interfaces: list[InterfaceValue] = []
+        for reference in node.interfaces:
+            if not self.environment.has(reference.name):
+                raise self._control_error(
+                    ErrorCode.INVALID_INTERFACE,
+                    f"الواجهة '{reference.name}' مش معرّفة",
+                    reference.span,
+                    "عرّف الواجهة قبل الصنف اللي بينفّذها",
+                )
+            candidate = self.environment.get(reference.name, reference.span)
+            if not isinstance(candidate, InterfaceValue):
+                raise self._control_error(
+                    ErrorCode.INVALID_INTERFACE,
+                    f"'{reference.name}' مش واجهة عشان الصنف ينفّذها",
+                    reference.span,
+                    "`ينفذ` بتشتغل مع 'واجهة' بس",
+                )
+            interfaces.append(candidate)
+
+        self._validate_private_members(node, base)
+        klass = ClassValue(
+            node, self.environment, base=base, interfaces=tuple(interfaces)
+        )
+        for interface in interfaces:
+            self._validate_interface(klass, interface)
+        self.environment.define(node.name, klass)
+
+    def _validate_private_members(
+        self, node: ClassDeclaration, base: ClassValue | None
+    ) -> None:
+        inherited_fields: set[str] = set()
+        inherited_methods: dict[str, Span] = {}
+        klass = base
+        while klass is not None:
+            inherited_fields.update(
+                field.name for field in klass.declaration.private_fields
+            )
+            inherited_methods.update(
+                {method.name: method.name_span for method in klass.declaration.methods}
+            )
+            klass = klass.base
+
+        own_fields: set[str] = set()
+        own_methods = {method.name: method for method in node.methods}
+        for field in node.private_fields:
+            if field.name in own_fields:
+                raise self._control_error(
+                    ErrorCode.PRIVATE_MEMBER_CONFLICT,
+                    f"الحقل الخاص '{field.name}' متكرر في نفس الصنف",
+                    field.name_span,
+                    "احتفظ بتعريف واحد لكل حقل خاص",
+                )
+            own_fields.add(field.name)
+            if field.name in inherited_fields:
+                raise self._control_error(
+                    ErrorCode.PRIVATE_MEMBER_CONFLICT,
+                    f"الحقل الخاص '{field.name}' موجود بالفعل في صنف أب",
+                    field.name_span,
+                    "اسم مختلف لكل حقل خاص على طول سلسلة الوراثة",
+                )
+            if field.name in own_methods:
+                raise self._control_error(
+                    ErrorCode.PRIVATE_MEMBER_CONFLICT,
+                    f"الاسم '{field.name}' مستخدم كحقل وكطريقة في نفس الصنف",
+                    field.name_span,
+                    "غيّر اسم الحقل أو الطريقة",
+                )
+
+        for method in node.methods:
+            if not method.is_private:
+                continue
+            if method.name == "__تهيئة__":
+                raise self._control_error(
+                    ErrorCode.PRIVATE_MEMBER_CONFLICT,
+                    "'__تهيئة__' مينفعش تكون خاصة",
+                    method.name_span,
+                    "خلي التهيئة عامة عشان نداء الصنف يشتغل",
+                )
+            if method.name in inherited_methods:
+                raise self._control_error(
+                    ErrorCode.PRIVATE_MEMBER_CONFLICT,
+                    f"الطريقة الخاصة '{method.name}' بتعارض عضوًا موروثًا",
+                    method.name_span,
+                    "الطريقة الخاصة لازم يكون اسمها جديد في سلسلة الوراثة",
+                )
+            if method.name in own_fields:
+                raise self._control_error(
+                    ErrorCode.PRIVATE_MEMBER_CONFLICT,
+                    f"الاسم '{method.name}' مستخدم كحقل وكطريقة في نفس الصنف",
+                    method.name_span,
+                    "غيّر اسم الحقل أو الطريقة",
+                )
+
+    def _validate_interface(
+        self, klass: ClassValue, interface: InterfaceValue
+    ) -> None:
+        for signature in interface.declaration.methods:
+            resolved = (
+                klass.resolve_static_method(signature.name)
+                if signature.is_static
+                else klass.resolve_instance_method(signature.name)
+            )
+            if resolved is None or resolved[1].is_private:
+                raise self._control_error(
+                    ErrorCode.MISSING_INTERFACE_MEMBER,
+                    f"الصنف '{klass.name}' ناقص طريقة '{signature.name}' "
+                    f"المطلوبة من واجهة '{interface.name}'",
+                    signature.name_span,
+                    "ضيف الطريقة بنفس الاسم والتوقيع",
+                )
+            implementation = resolved[1]
+            if len(implementation.parameters) != len(signature.parameters):
+                raise self._control_error(
+                    ErrorCode.MISSING_INTERFACE_MEMBER,
+                    f"طريقة '{signature.name}' في '{klass.name}' "
+                    f"عدد معاملاتها مش مطابق لواجهة '{interface.name}'",
+                    signature.name_span,
+                    "وحّد عدد المعاملات مع الواجهة",
+                )
+            for expected, actual in zip(
+                signature.parameters, implementation.parameters, strict=True
+            ):
+                if not self._types_match(
+                    expected.declared_type, actual.declared_type
+                ):
+                    raise self._control_error(
+                        ErrorCode.MISSING_INTERFACE_MEMBER,
+                        f"طريقة '{signature.name}' في '{klass.name}' "
+                        f"نوع معاملها مش مطابق لواجهة '{interface.name}'",
+                        signature.name_span,
+                        "وحّد أنواع المعاملات مع الواجهة",
+                    )
+            if not self._types_match(
+                signature.return_type, implementation.return_type
+            ):
+                raise self._control_error(
+                    ErrorCode.MISSING_INTERFACE_MEMBER,
+                    f"طريقة '{signature.name}' في '{klass.name}' "
+                    f"نوع إرجاعها مش مطابق لواجهة '{interface.name}'",
+                    signature.name_span,
+                    "وحّد نوع الإرجاع مع الواجهة",
+                )
+
+    @staticmethod
+    def _types_match(
+        expected: TypeName | None, actual: TypeName | None
+    ) -> bool:
+        if expected is None:
+            return True
+        return actual is not None and actual.name == expected.name
+
     def visit_return_statement(self, node: ReturnStatement) -> None:
         value = self._eval(node.value) if node.value is not None else NULL
         raise _Return(value, node.span)
@@ -352,6 +549,31 @@ class Interpreter(ASTVisitor):
             "استخدم 'لكل' مع قائمة أو نص أو قاموس",
         )
 
+    def visit_member_assignment(self, node: MemberAssignment) -> None:
+        target = self._eval(node.target)
+        value = self._eval(node.value)
+        if not isinstance(target, InstanceValue):
+            raise self._control_error(
+                ErrorCode.INVALID_MEMBER_ACCESS,
+                f"مينفعش أحط خاصية على {describe_value(target)}",
+                node.target.span,
+                "الخصائص بتتحدّد على كائن (مثال: شخص.سن = 30)",
+            )
+        owner = target.klass.private_field_owner(node.name)
+        if owner is not None and self._current_class() is not owner:
+            raise self._private_error(node.name, owner, node.name_span)
+        target.fields[node.name] = value
+
+    def _private_error(
+        self, name: str, owner: ClassValue, span: Span
+    ) -> ArabiyaRuntimeError:
+        return self._control_error(
+            ErrorCode.PRIVATE_MEMBER_ACCESS,
+            f"'{name}' عضو خاص في '{owner.name}'",
+            span,
+            "الأعضاء الخاصة بتتستخدم من جوّه الصنف اللي عرّفها بس",
+        )
+
     def visit_index_assignment(self, node: IndexAssignment) -> None:
         collection = self._eval(node.collection)
         index = self._eval(node.index)
@@ -417,6 +639,86 @@ class Interpreter(ASTVisitor):
             result[key] = self._eval(value_node)
         return result
 
+    def visit_member_expression(self, node: MemberExpression) -> Value:
+        target = self._eval(node.target)
+        current = self._current_class()
+        if isinstance(target, InstanceValue):
+            owner = target.klass.private_field_owner(node.name)
+            if owner is not None and current is not owner:
+                raise self._private_error(node.name, owner, node.name_span)
+            if node.name in target.fields:
+                return target.fields[node.name]
+            resolved = target.klass.resolve_instance_method_for(node.name, current)
+            if resolved is not None:
+                declaring, method = resolved
+                return BoundMethod(target, method, declaring)
+            private_owner = target.klass.private_method_owner(
+                node.name, is_static=False
+            )
+            if private_owner is not None:
+                raise self._private_error(
+                    node.name, private_owner, node.name_span
+                )
+            raise self._control_error(
+                ErrorCode.MEMBER_NOT_FOUND,
+                f"الصنف '{target.klass.name}' مفيهوش عضو اسمه '{node.name}'",
+                node.name_span,
+                "تأكد من اسم الخاصية أو الطريقة، أو عرّفها جوّه 'صنف'",
+            )
+        if isinstance(target, SuperValue):
+            resolved = target.start.resolve_instance_method_for(
+                node.name, current
+            )
+            if resolved is not None:
+                declaring, method = resolved
+                return BoundMethod(target.instance, method, declaring)
+            private_owner = target.start.private_method_owner(
+                node.name, is_static=False
+            )
+            if private_owner is not None:
+                raise self._private_error(
+                    node.name, private_owner, node.name_span
+                )
+            raise self._control_error(
+                ErrorCode.MEMBER_NOT_FOUND,
+                f"أساس '{target.start.name}' مفيهوش طريقة اسمها '{node.name}'",
+                node.name_span,
+                "`الأساس` بيوصل لطرق الأب بس (مش الخصائص)",
+            )
+        if isinstance(target, ClassValue):
+            resolved_static = target.resolve_static_method_for(
+                node.name, current
+            )
+            if resolved_static is not None:
+                declaring, method = resolved_static
+                return BoundMethod(None, method, declaring)
+            private_owner = target.private_method_owner(
+                node.name, is_static=True
+            ) or target.private_method_owner(node.name, is_static=False)
+            if private_owner is not None:
+                raise self._private_error(
+                    node.name, private_owner, node.name_span
+                )
+            if target.resolve_instance_method(node.name) is not None:
+                raise self._control_error(
+                    ErrorCode.INVALID_MEMBER_ACCESS,
+                    f"'{node.name}' طريقة كائن على '{target.name}' ومش طريقة ساكنة",
+                    node.name_span,
+                    f"ناديها على كائن: خلي ك = {target.name}(...)\nك.{node.name}(...)",
+                )
+            raise self._control_error(
+                ErrorCode.MEMBER_NOT_FOUND,
+                f"الصنف '{target.name}' مفيهوش طريقة ساكنة اسمها '{node.name}'",
+                node.name_span,
+                "الوصول بالصنف بيشتغل مع 'دالة ساكنة' بس",
+            )
+        raise self._control_error(
+            ErrorCode.INVALID_MEMBER_ACCESS,
+            f"مينفعش أوصل لعضو '{node.name}' على {describe_value(target)}",
+            node.target.span,
+            "الوصول بالنقطة بيشتغل على الكائنات والأصناف بس",
+        )
+
     def visit_index_expression(self, node: IndexExpression) -> Value:
         target = self._eval(node.target)
         index = self._eval(node.index)
@@ -460,7 +762,21 @@ class Interpreter(ASTVisitor):
         return position
 
     def _hashable_key(self, key: Value, span: Span) -> Value:
-        if isinstance(key, (list, dict, ArabiyaFunction, NativeFunction)):
+        if isinstance(
+            key,
+            (
+                list,
+                dict,
+                ArabiyaFunction,
+                LambdaFunction,
+                NativeFunction,
+                BoundMethod,
+                ClassValue,
+                InstanceValue,
+                SuperValue,
+                InterfaceValue,
+            ),
+        ):
             raise self._control_error(
                 ErrorCode.UNHASHABLE_KEY,
                 f"مينفعش أستخدم {describe_value(key)} كمفتاح",
@@ -474,8 +790,12 @@ class Interpreter(ASTVisitor):
         arguments = [self._eval(argument) for argument in node.arguments]
         if isinstance(callee, NativeFunction):
             return self._call_native(callee, arguments, node.span)
-        if isinstance(callee, ArabiyaFunction):
+        if isinstance(callee, (ArabiyaFunction, LambdaFunction)):
             return self._call_function(callee, arguments, node.span)
+        if isinstance(callee, ClassValue):
+            return self._instantiate(callee, arguments, node.span)
+        if isinstance(callee, BoundMethod):
+            return self._call_method(callee, arguments, node.span)
         raise self._control_error(
             ErrorCode.NOT_CALLABLE,
             f"{describe_value(callee)} مش دالة عشان تناديها",
@@ -496,18 +816,50 @@ class Interpreter(ASTVisitor):
             ) from None
 
     def _call_function(
-        self, fn: ArabiyaFunction, arguments: list[Value], span: Span
+        self,
+        fn: ArabiyaFunction | LambdaFunction,
+        arguments: list[Value],
+        span: Span,
     ) -> Value:
         if len(arguments) != fn.arity:
             raise self._arity_error(fn.name, fn.arity, len(arguments), span)
         call_scope = fn.closure.child()
         for parameter, argument in zip(fn.declaration.parameters, arguments, strict=True):
             call_scope.define(parameter.name, argument)
+        return self._execute_body(fn.declaration, call_scope)
 
-        previous = self.environment
-        self.environment = call_scope
+    def _call_method(
+        self, bound: BoundMethod, arguments: list[Value], span: Span
+    ) -> Value:
+        if len(arguments) != bound.arity:
+            display = f"{bound.declaring.name}.{bound.name}"
+            raise self._arity_error(display, bound.arity, len(arguments), span)
+        call_scope = bound.declaring.closure.child()
+        self._method_classes.append(bound.declaring)
         try:
-            for statement in fn.declaration.body:
+            if bound.instance is not None:
+                call_scope.define("انا", bound.instance)
+                if bound.declaring.base is not None:
+                    call_scope.define(
+                        "الأساس", SuperValue(bound.instance, bound.declaring.base)
+                    )
+            for parameter, argument in zip(
+                bound.method.parameters, arguments, strict=True
+            ):
+                call_scope.define(parameter.name, argument)
+            return self._execute_body(bound.method, call_scope)
+        finally:
+            self._method_classes.pop()
+
+    def _execute_body(
+        self,
+        declaration: FunctionDeclaration | MethodDeclaration | LambdaExpression,
+        scope: Environment,
+    ) -> Value:
+        previous = self.environment
+        self.environment = scope
+        try:
+            for statement in declaration.body:
                 self.visit(statement)
             return NULL
         except _Return as signal:
@@ -521,6 +873,19 @@ class Interpreter(ASTVisitor):
             ) from None
         finally:
             self.environment = previous
+
+    def _instantiate(
+        self, klass: ClassValue, arguments: list[Value], span: Span
+    ) -> Value:
+        instance = InstanceValue(klass, {})
+        resolved = klass.resolve_instance_method("__تهيئة__")
+        if resolved is not None:
+            declaring, initializer = resolved
+            bound = BoundMethod(instance, initializer, declaring)
+            self._call_method(bound, arguments, span)
+        elif arguments:
+            raise self._arity_error(klass.name, 0, len(arguments), span)
+        return instance
 
     def _arity_error(
         self, name: str, expected: int, got: int, span: Span

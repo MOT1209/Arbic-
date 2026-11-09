@@ -16,9 +16,11 @@ from al_arabiya.compiler.ast.nodes import (
     BinaryExpression,
     BreakStatement,
     CallExpression,
+    ClassDeclaration,
     ContinueStatement,
     Expression,
     ExpressionStatement,
+    FieldDeclaration,
     ForEachStatement,
     FunctionDeclaration,
     Identifier,
@@ -26,9 +28,14 @@ from al_arabiya.compiler.ast.nodes import (
     ImportStatement,
     IndexAssignment,
     IndexExpression,
+    InterfaceDeclaration,
+    LambdaExpression,
     ListLiteral,
     Literal,
     MapLiteral,
+    MemberAssignment,
+    MemberExpression,
+    MethodDeclaration,
     NullLiteral,
     Parameter,
     PrintStatement,
@@ -74,6 +81,11 @@ _INFIX_PRECEDENCE: dict[TokenType, Precedence] = {
     TokenType.KW_DIV: Precedence.MULTIPLICATIVE,
     TokenType.PERCENT: Precedence.MULTIPLICATIVE,
 }
+
+#: Keyword tokens that are also valid type names in ``: <type>`` annotations.
+_TYPE_KEYWORDS: frozenset[TokenType] = frozenset(
+    {TokenType.KW_NULL, TokenType.KW_FUNC, TokenType.KW_CLASS}
+)
 
 _SIMPLE_INFIX: dict[TokenType, tuple[str, int]] = {
     TokenType.KW_OR: ("أو", 1),
@@ -273,9 +285,27 @@ class Parser:
                 expr = self._finish_call(expr)
             elif self._check(TokenType.LBRACKET):
                 expr = self._finish_index(expr)
+            elif self._check(TokenType.DOT):
+                expr = self._finish_member(expr)
             else:
                 break
         return expr
+
+    def _finish_member(self, target: Expression) -> MemberExpression:
+        self._advance()  # consume '.'
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد '.' لازم يجي اسم عضو (خاصية أو طريقة)",
+            suggestion="مثال: انا.الاسم",
+        )
+        assert isinstance(name_token.value, str)
+        return MemberExpression(
+            Span(target.span.start, name_token.span.end),
+            target,
+            name_token.value,
+            name_token.span,
+        )
 
     def _finish_index(self, target: Expression) -> Expression:
         self._advance()  # consume '['
@@ -383,6 +413,8 @@ class Parser:
         if token_type is TokenType.IDENTIFIER:
             assert isinstance(token.value, str)
             return Identifier(token.span, token.value)
+        if token_type is TokenType.KW_FUNC:
+            return self._parse_lambda(token)
         if token_type is TokenType.LPAREN:
             inner = self.parse_expression()
             closing = self._expect(
@@ -416,16 +448,42 @@ class Parser:
             suggestion="ابدأ التعبير برقم أو نص أو اسم متغير أو قوس '('",
         )
 
+    def _parse_lambda(self, keyword: Token) -> LambdaExpression:
+        """Parse an anonymous function used as an expression.
+
+        The body follows on the next line and closes with ``خلاص``, exactly
+        like a named function, so no new statement syntax is introduced.
+        """
+        parameters = self._parse_parameters()
+        return_type = self._parse_optional_type()
+        if not self._check(TokenType.NEWLINE):
+            raise self._make_error(
+                self._peek(),
+                ErrorCode.EXPECTED_NEWLINE,
+                "جسم الدالة المجهولة لازم يبدأ في سطر جديد",
+                suggestion="اكتب الجسم في السطر اللي بعده واقفله بـ 'خلاص'",
+            )
+        self._advance()  # consume the header newline
+        body = self._parse_block({TokenType.KW_END})
+        self._expect_block_end("الدالة المجهولة لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        return LambdaExpression(
+            Span(keyword.span.start, end), parameters, body, return_type=return_type
+        )
+
     def _parse_optional_type(self) -> TypeName | None:
         """Parse ``: <type-name>`` when present; otherwise return ``None``."""
         if not self._match(TokenType.COLON):
             return None
-        token = self._expect(
-            TokenType.IDENTIFIER,
-            ErrorCode.EXPECTED_IDENTIFIER,
-            "بعد ':' لازم يجي اسم نوع (رقم، نص، منطقي، قائمة، قاموس، ...)",
-            suggestion="مثال: خلي العمر : رقم = 25",
-        )
+        if self._check(TokenType.IDENTIFIER) or self._peek().type in _TYPE_KEYWORDS:
+            token = self._advance()
+        else:
+            raise self._make_error(
+                self._peek(),
+                ErrorCode.EXPECTED_IDENTIFIER,
+                "بعد ':' لازم يجي اسم نوع (رقم، نص، منطقي، قائمة، قاموس، ...)",
+                suggestion="مثال: خلي العمر : رقم = 25",
+            )
         assert isinstance(token.value, str)
         return TypeName(token.span, token.value)
 
@@ -449,6 +507,10 @@ class Parser:
             return self._parse_while()
         if token_type is TokenType.KW_FUNC:
             return self._parse_function()
+        if token_type is TokenType.KW_CLASS:
+            return self._parse_class()
+        if token_type is TokenType.KW_INTERFACE:
+            return self._parse_interface()
         if token_type is TokenType.KW_RETURN:
             return self._parse_return()
         if token_type is TokenType.KW_BREAK:
@@ -473,7 +535,7 @@ class Parser:
         """A call statement, an index assignment, or (otherwise) an error."""
         expression = self.parse_expression()
         if self._check(TokenType.ASSIGN):
-            return self._finish_index_assignment(expression, first)
+            return self._finish_assignment(expression, first)
         if not isinstance(expression, CallExpression):
             raise self._make_error(
                 first,
@@ -485,20 +547,35 @@ class Parser:
         self._end_statement()
         return ExpressionStatement(Span(expression.span.start, end), expression)
 
-    def _finish_index_assignment(self, target: Expression, first: Token) -> Statement:
-        if not isinstance(target, IndexExpression):
-            raise self._make_error(
-                first,
-                ErrorCode.INVALID_ASSIGN_TARGET,
-                "مينفعش تدّي قيمة للحاجة دي",
-                suggestion="غيّر متغيّر (س = ...) أو عنصر في قائمة/قاموس (ق[0] = ...)",
+    def _finish_assignment(self, target: Expression, first: Token) -> Statement:
+        if isinstance(target, IndexExpression):
+            self._advance()  # consume '='
+            value = self.parse_expression()
+            end = self._prev.span.end
+            self._end_statement()
+            return IndexAssignment(
+                Span(target.span.start, end), target.target, target.index, value
             )
-        self._advance()  # consume '='
-        value = self.parse_expression()
-        end = self._prev.span.end
-        self._end_statement()
-        return IndexAssignment(
-            Span(target.span.start, end), target.target, target.index, value
+        if isinstance(target, MemberExpression):
+            self._advance()  # consume '='
+            value = self.parse_expression()
+            end = self._prev.span.end
+            self._end_statement()
+            return MemberAssignment(
+                Span(target.span.start, end),
+                target.target,
+                target.name,
+                target.name_span,
+                value,
+            )
+        raise self._make_error(
+            first,
+            ErrorCode.INVALID_ASSIGN_TARGET,
+            "مينفعش تدّي قيمة للحاجة دي",
+            suggestion=(
+                "غيّر متغيّر (س = ...) أو عنصر في قائمة/قاموس (ق[0] = ...) "
+                "أو خاصية كائن (س.اسم = ...)"
+            ),
         )
 
     def _parse_for_each(self) -> ForEachStatement:
@@ -724,6 +801,31 @@ class Parser:
             "بعد 'دالة' لازم يجي اسم الدالة",
             suggestion="مثال: دالة اجمع (أ، ب)",
         )
+        parameters, body, return_type, span = self._parse_callable(keyword, name_token)
+        assert isinstance(name_token.value, str)
+        return FunctionDeclaration(
+            span,
+            name_token.value,
+            name_token.span,
+            parameters,
+            body,
+            return_type=return_type,
+        )
+
+    def _parse_callable(
+        self, keyword: Token, name_token: Token
+    ) -> tuple[list[Parameter], list[Statement], TypeName | None, Span]:
+        """Parse the parameter list, optional type and body shared by functions/methods."""
+        parameters = self._parse_parameters()
+        return_type = self._parse_optional_type()
+        self._end_statement()
+        body = self._parse_block({TokenType.KW_END})
+        self._expect_block_end("الدالة لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        return parameters, body, return_type, Span(keyword.span.start, end)
+
+    def _parse_parameters(self) -> list[Parameter]:
         self._expect(
             TokenType.LPAREN,
             ErrorCode.EXPECTED_TOKEN,
@@ -741,20 +843,185 @@ class Parser:
             "قوس المعاملات مش متقفل",
             suggestion="اقفل القوس بـ ')'",
         )
-        return_type = self._parse_optional_type()
+        return parameters
+
+    def _parse_class(self) -> ClassDeclaration:
+        keyword = self._advance()
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'صنف' لازم يجي اسم الصنف",
+            suggestion="مثال: صنف شخص",
+        )
+        base_token: Token | None = None
+        if self._match(TokenType.KW_INHERIT):
+            base_token = self._expect(
+                TokenType.IDENTIFIER,
+                ErrorCode.EXPECTED_IDENTIFIER,
+                "بعد 'يرث' لازم يجي اسم الصنف الأب",
+                suggestion="مثال: صنف طالب يرث شخص",
+            )
+        interfaces: list[TypeName] = []
+        if self._match(TokenType.KW_IMPLEMENTS):
+            while True:
+                interface_token = self._expect(
+                    TokenType.IDENTIFIER,
+                    ErrorCode.EXPECTED_IDENTIFIER,
+                    "بعد 'ينفذ' لازم يجي اسم الواجهة",
+                    suggestion="مثال: صنف شخص ينفذ قابل_للطباعة",
+                )
+                assert isinstance(interface_token.value, str)
+                interfaces.append(
+                    TypeName(interface_token.span, interface_token.value)
+                )
+                if not self._match(TokenType.COMMA):
+                    break
         self._end_statement()
-        body = self._parse_block({TokenType.KW_END})
-        self._expect_block_end("الدالة لازم تتقفل بكلمة 'خلاص'")
+        methods: list[MethodDeclaration] = []
+        private_fields: list[FieldDeclaration] = []
+        self._skip_newlines()
+        while not self._at_eof() and not self._check(TokenType.KW_END):
+            before = self._index
+            try:
+                if self._check(TokenType.KW_PRIVATE):
+                    private_token = self._advance()
+                    if self._check(TokenType.KW_FUNC):
+                        methods.append(
+                            self._parse_method(private_token=private_token)
+                        )
+                    else:
+                        field_token = self._expect(
+                            TokenType.IDENTIFIER,
+                            ErrorCode.EXPECTED_IDENTIFIER,
+                            "بعد 'خاص' لازم يجي اسم حقل أو 'دالة'",
+                            suggestion="مثال: خاص الرصيد  أو  خاص دالة تحقق()",
+                        )
+                        assert isinstance(field_token.value, str)
+                        self._end_statement()
+                        private_fields.append(
+                            FieldDeclaration(
+                                field_token.span,
+                                field_token.value,
+                                field_token.span,
+                            )
+                        )
+                else:
+                    methods.append(self._parse_method())
+            except ParseError:
+                self._synchronize()
+            if self._index == before:
+                self._advance()
+            self._skip_newlines()
+        self._expect_block_end("الصنف لازم يتقفل بكلمة 'خلاص'")
         end = self._prev.span.end
         self._end_statement()
         assert isinstance(name_token.value, str)
-        return FunctionDeclaration(
+        base_name: str | None = None
+        base_span: Span | None = None
+        if base_token is not None:
+            assert isinstance(base_token.value, str)
+            base_name = base_token.value
+            base_span = base_token.span
+        return ClassDeclaration(
             Span(keyword.span.start, end),
+            name_token.value,
+            name_token.span,
+            methods,
+            base_name=base_name,
+            base_span=base_span,
+            private_fields=private_fields,
+            interfaces=interfaces,
+        )
+
+    def _parse_interface(self) -> InterfaceDeclaration:
+        keyword = self._advance()
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'واجهة' لازم يجي اسم الواجهة",
+            suggestion="مثال: واجهة قابل_للطباعة",
+        )
+        self._end_statement()
+        methods: list[MethodDeclaration] = []
+        self._skip_newlines()
+        while not self._at_eof() and not self._check(TokenType.KW_END):
+            before = self._index
+            try:
+                methods.append(self._parse_signature())
+            except ParseError:
+                self._synchronize()
+            if self._index == before:
+                self._advance()
+            self._skip_newlines()
+        self._expect_block_end("الواجهة لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(name_token.value, str)
+        return InterfaceDeclaration(
+            Span(keyword.span.start, end),
+            name_token.value,
+            name_token.span,
+            methods,
+        )
+
+    def _parse_signature(self) -> MethodDeclaration:
+        keyword = self._expect(
+            TokenType.KW_FUNC,
+            ErrorCode.EXPECTED_TOKEN,
+            "جوّه 'واجهة' لازم تكتب توقيع الطرق بكلمة 'دالة'",
+            suggestion="مثال: دالة اطبع_نفسك() : نص",
+        )
+        is_static = self._match(TokenType.KW_STATIC)
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'دالة' لازم يجي اسم الطريقة",
+            suggestion="مثال: دالة اطبع_نفسك()",
+        )
+        parameters = self._parse_parameters()
+        return_type = self._parse_optional_type()
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(name_token.value, str)
+        return MethodDeclaration(
+            Span(keyword.span.start, end),
+            name_token.value,
+            name_token.span,
+            parameters,
+            [],
+            return_type=return_type,
+            is_static=is_static,
+            is_abstract=True,
+        )
+
+    def _parse_method(
+        self, *, private_token: Token | None = None
+    ) -> MethodDeclaration:
+        keyword = self._expect(
+            TokenType.KW_FUNC,
+            ErrorCode.EXPECTED_TOKEN,
+            "جوّه 'صنف' لازم تعرّف الطرق بكلمة 'دالة'",
+            suggestion="مثال: دالة عرّف() أو دالة ساكنة وصف()",
+        )
+        is_static = self._match(TokenType.KW_STATIC)
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'دالة' لازم يجي اسم الطريقة",
+            suggestion="مثال: دالة __تهيئة__(الاسم)",
+        )
+        parameters, body, return_type, span = self._parse_callable(keyword, name_token)
+        assert isinstance(name_token.value, str)
+        start = private_token.span.start if private_token is not None else span.start
+        return MethodDeclaration(
+            Span(start, span.end),
             name_token.value,
             name_token.span,
             parameters,
             body,
             return_type=return_type,
+            is_static=is_static,
+            is_private=private_token is not None,
         )
 
     def _parse_parameter(self) -> Parameter:

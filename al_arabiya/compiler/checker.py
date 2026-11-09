@@ -15,6 +15,7 @@ from al_arabiya.compiler.ast.nodes import (
     Assignment,
     BinaryExpression,
     CallExpression,
+    ClassDeclaration,
     Expression,
     ExpressionStatement,
     ForEachStatement,
@@ -24,9 +25,14 @@ from al_arabiya.compiler.ast.nodes import (
     ImportStatement,
     IndexAssignment,
     IndexExpression,
+    InterfaceDeclaration,
+    LambdaExpression,
     ListLiteral,
     Literal,
     MapLiteral,
+    MemberAssignment,
+    MemberExpression,
+    MethodDeclaration,
     NullLiteral,
     PrintStatement,
     Program,
@@ -54,9 +60,12 @@ T_NULL = "فراغ"
 T_LIST = "قائمة"
 T_MAP = "قاموس"
 T_FUNC = "دالة"
+T_CLASS = "صنف"
 T_ANY = "أي"
 
-KNOWN_TYPES = frozenset({T_NUM, T_TEXT, T_BOOL, T_NULL, T_LIST, T_MAP, T_FUNC, T_ANY})
+KNOWN_TYPES = frozenset(
+    {T_NUM, T_TEXT, T_BOOL, T_NULL, T_LIST, T_MAP, T_FUNC, T_CLASS, T_ANY}
+)
 _NUMERIC = frozenset({T_NUM, T_ANY})
 
 
@@ -76,6 +85,8 @@ class TypeChecker:
         self._scopes: list[dict[str, str]] = [{}]
         self._functions: dict[str, _FunctionSignature] = {}
         self._return_types: list[str] = []  # stack of enclosing function return types
+        self._interfaces: dict[str, list[MethodDeclaration]] = {}
+        self._class_methods: dict[str, dict[tuple[str, bool], MethodDeclaration]] = {}
 
     def check(self, program: Program) -> DiagnosticBag:
         for statement in program.body:
@@ -132,6 +143,10 @@ class TypeChecker:
             self._check_assignment(node)
         elif isinstance(node, FunctionDeclaration):
             self._check_function(node)
+        elif isinstance(node, ClassDeclaration):
+            self._check_class(node)
+        elif isinstance(node, InterfaceDeclaration):
+            self._check_interface(node)
         elif isinstance(node, ReturnStatement):
             self._check_return(node)
         elif isinstance(node, PrintStatement):
@@ -161,6 +176,9 @@ class TypeChecker:
         elif isinstance(node, IndexAssignment):
             self._infer(node.collection)
             self._infer(node.index)
+            self._infer(node.value)
+        elif isinstance(node, MemberAssignment):
+            self._infer(node.target)
             self._infer(node.value)
         elif isinstance(node, TryStatement):
             self._check_block(node.try_body)
@@ -207,6 +225,96 @@ class TypeChecker:
         self._return_types.pop()
         self._scopes.pop()
 
+    def _check_class(self, node: ClassDeclaration) -> None:
+        self._define(node.name, T_CLASS)
+        inherited = dict(self._class_methods.get(node.base_name or "", {}))
+        for method in node.methods:
+            inherited[(method.name, method.is_static)] = method
+        self._class_methods[node.name] = inherited
+
+        for method in node.methods:
+            self._check_method(method, has_base=node.base_name is not None)
+        for interface in node.interfaces:
+            signatures = self._interfaces.get(interface.name)
+            if signatures is None:
+                continue  # imported interface: checked at runtime
+            for signature in signatures:
+                implementation = inherited.get(
+                    (signature.name, signature.is_static)
+                )
+                if implementation is None or implementation.is_private:
+                    self.bag.error(
+                        ErrorCode.MISSING_INTERFACE_MEMBER,
+                        f"الصنف '{node.name}' ناقص طريقة "
+                        f"'{signature.name}' المطلوبة من واجهة "
+                        f"'{interface.name}'",
+                        signature.name_span,
+                        suggestion="ضيف الطريقة بنفس الاسم والتوقيع",
+                    )
+                    continue
+                if not self._signature_matches(signature, implementation):
+                    self.bag.error(
+                        ErrorCode.MISSING_INTERFACE_MEMBER,
+                        f"طريقة '{signature.name}' في '{node.name}' "
+                        f"مش مطابقة لتوقيع واجهة '{interface.name}'",
+                        signature.name_span,
+                        suggestion="وحّد عدد المعاملات وأنواعها ونوع الإرجاع",
+                    )
+
+    def _check_interface(self, node: InterfaceDeclaration) -> None:
+        self._define(node.name, T_CLASS)
+        self._interfaces[node.name] = node.methods
+        for method in node.methods:
+            self._check_method(method, has_base=False, is_abstract=True)
+
+    @staticmethod
+    def _signature_matches(
+        signature: MethodDeclaration, implementation: MethodDeclaration
+    ) -> bool:
+        if len(signature.parameters) != len(implementation.parameters):
+            return False
+        pairs = zip(
+            signature.parameters, implementation.parameters, strict=True
+        )
+        for expected, actual in pairs:
+            if expected.declared_type is None:
+                continue
+            if actual.declared_type is None:
+                return False
+            if expected.declared_type.name != actual.declared_type.name:
+                return False
+        expected_return = signature.return_type
+        if expected_return is None:
+            return True
+        actual_return = implementation.return_type
+        return (
+            actual_return is not None
+            and actual_return.name == expected_return.name
+        )
+
+    def _check_method(
+        self,
+        node: MethodDeclaration,
+        *,
+        has_base: bool,
+        is_abstract: bool = False,
+    ) -> None:
+        parameter_types = [
+            self._resolve_annotation(p.declared_type) for p in node.parameters
+        ]
+        return_type = self._resolve_annotation(node.return_type)
+        self._scopes.append(
+            {p.name: ptype for p, ptype in zip(node.parameters, parameter_types, strict=True)}
+        )
+        if not node.is_static and not is_abstract:
+            self._define("انا", T_CLASS)
+            if has_base:
+                self._define("الأساس", T_CLASS)
+        self._return_types.append(return_type)
+        self._check_block(node.body)
+        self._return_types.pop()
+        self._scopes.pop()
+
     def _check_return(self, node: ReturnStatement) -> None:
         actual = self._infer(node.value) if node.value is not None else T_NULL
         if self._return_types:
@@ -227,6 +335,22 @@ class TypeChecker:
             return T_TEXT
         if isinstance(node, NullLiteral):
             return T_NULL
+        if isinstance(node, LambdaExpression):
+            parameter_types = [
+                self._resolve_annotation(p.declared_type) for p in node.parameters
+            ]
+            return_type = self._resolve_annotation(node.return_type)
+            self._scopes.append(
+                {
+                    p.name: ptype
+                    for p, ptype in zip(node.parameters, parameter_types, strict=True)
+                }
+            )
+            self._return_types.append(return_type)
+            self._check_block(node.body)
+            self._return_types.pop()
+            self._scopes.pop()
+            return T_FUNC
         if isinstance(node, ListLiteral):
             for element in node.elements:
                 self._infer(element)
@@ -249,6 +373,9 @@ class TypeChecker:
             return self._infer_call(node)
         if isinstance(node, IndexExpression):
             return self._infer_index(node)
+        if isinstance(node, MemberExpression):
+            self._infer(node.target)
+            return T_ANY
         return T_ANY
 
     def _infer_binary(self, node: BinaryExpression) -> str:

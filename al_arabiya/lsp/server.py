@@ -12,7 +12,12 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-from al_arabiya.compiler.ast.nodes import FunctionDeclaration, VariableDeclaration
+from al_arabiya.compiler.ast.nodes import (
+    ClassDeclaration,
+    FunctionDeclaration,
+    InterfaceDeclaration,
+    VariableDeclaration,
+)
 from al_arabiya.compiler.checker import check_types
 from al_arabiya.compiler.diagnostics.diagnostics import Diagnostic
 from al_arabiya.compiler.frontend import compile_source
@@ -29,6 +34,8 @@ _SEVERITY_WARNING = 2
 _KIND_FUNCTION_COMPLETION = 3
 _KIND_KEYWORD = 14
 _KIND_CLASS = 7
+_SYMBOL_CLASS = 5
+_SYMBOL_METHOD = 6
 _SYMBOL_FUNCTION = 12
 _SYMBOL_VARIABLE = 13
 _METHOD_NOT_FOUND = -32601
@@ -44,7 +51,18 @@ _KEYWORD_HELP: dict[str, str] = {
     "كرر": "كرر <عدد> مرات ... خلاص — حلقة بعدد ثابت",
     "مرات": "كرر <عدد> مرات — كلمة التكرار",
     "طالما": "طالما <شرط> ... خلاص — حلقة بشرط",
-    "دالة": "دالة <اسم> (<معاملات>) ... خلاص — تعريف دالة",
+    "دالة": (
+        "دالة <اسم> (<معاملات>) ... خلاص — تعريف دالة · "
+        "دالة (<معاملات>) ... خلاص — دالة مجهولة (lambda)"
+    ),
+    "صنف": "صنف <اسم> ... خلاص — تعريف صنف بطرق وخصائص",
+    "ساكنة": "دالة ساكنة — طريقة بتتنادى على الصنف نفسه",
+    "يرث": "صنف <اسم> يرث <أب> — وراثة مفردة من صنف معرّف",
+    "خاص": "خاص — عضو متاح بس جوّه الصنف اللي عرّفه",
+    "واجهة": "واجهة <اسم> ... خلاص — توقيعات طرق يلتزم بيها الصنف",
+    "ينفذ": "صنف <اسم> ينفذ <واجهة> — الصنف بيلتزم بتوقيعات الواجهة",
+    "انا": "انا — الكائن الحالي جوّه طريقة الصنف",
+    "الأساس": "الأساس — أبو الصنف اللي عرّف الطريقة، لنداء الأساس صراحةً",
     "رجّع": "رجّع <قيمة> — بترجّع قيمة من الدالة",
     "اكسر": "اكسر — بتوقف أقرب حلقة",
     "كمل": "كمل — بتروح للّفة اللي بعدها",
@@ -88,7 +106,17 @@ _BUILTIN_HELP: dict[str, str] = {
     "استبدل": "استبدل(نص، قديم، جديد) — استبدال",
 }
 
-_TYPE_NAMES = ("رقم", "نص", "منطقي", "فراغ", "قائمة", "قاموس", "دالة", "أي")
+_TYPE_NAMES = (
+    "رقم",
+    "نص",
+    "منطقي",
+    "فراغ",
+    "قائمة",
+    "قاموس",
+    "دالة",
+    "صنف",
+    "أي",
+)
 
 
 def _offset_at(text: str, line: int, character: int) -> int:
@@ -308,6 +336,16 @@ class LanguageServer:
                 symbols.append(
                     self._symbol(statement.name, _SYMBOL_FUNCTION, statement.span)
                 )
+            elif isinstance(statement, (ClassDeclaration, InterfaceDeclaration)):
+                children = [
+                    self._symbol(method.name, _SYMBOL_METHOD, method.span)
+                    for method in statement.methods
+                ]
+                symbols.append(
+                    self._symbol(
+                        statement.name, _SYMBOL_CLASS, statement.span, children=children
+                    )
+                )
             elif isinstance(statement, VariableDeclaration):
                 symbols.append(
                     self._symbol(statement.name, _SYMBOL_VARIABLE, statement.span)
@@ -315,7 +353,13 @@ class LanguageServer:
         return symbols
 
     @staticmethod
-    def _symbol(name: str, kind: int, span: Any) -> dict[str, Any]:
+    def _symbol(
+        name: str,
+        kind: int,
+        span: Any,
+        *,
+        children: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         rng = {
             "start": {"line": span.start.line - 1, "character": span.start.column - 1},
             "end": {
@@ -323,7 +367,15 @@ class LanguageServer:
                 "character": max(span.end.column - 1, 0),
             },
         }
-        return {"name": name, "kind": kind, "range": rng, "selectionRange": rng}
+        symbol: dict[str, Any] = {
+            "name": name,
+            "kind": kind,
+            "range": rng,
+            "selectionRange": rng,
+        }
+        if children:
+            symbol["children"] = children
+        return symbol
 
 
 def serve(stdin: Any, stdout: Any) -> int:

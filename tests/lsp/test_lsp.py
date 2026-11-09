@@ -216,6 +216,74 @@ def test_document_symbols_list_functions_and_variables():
     assert names.get("ع") == 13  # variable
 
 
+def test_document_symbols_include_classes_with_their_methods():
+    server, _ = make_server()
+    open_doc(
+        server,
+        "صنف شخص\n"
+        "    دالة __تهيئة__(الاسم)\n"
+        "        انا.الاسم = الاسم\n"
+        "    خلاص\n"
+        "    دالة ساكنة نوع()\n"
+        '        رجّع "إنسان"\n'
+        "    خلاص\n"
+        "خلاص\n",
+    )
+    response = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": "file.arb"}},
+        }
+    )
+    assert response is not None
+    class_symbol = next(s for s in response["result"] if s["name"] == "شخص")
+    assert class_symbol["kind"] == 5  # class
+    children = {child["name"]: child["kind"] for child in class_symbol["children"]}
+    assert children == {"__تهيئة__": 6, "نوع": 6}  # methods
+
+
+def test_hover_explains_the_class_keyword():
+    server, _ = make_server()
+    open_doc(server, "صنف شخص\nخلاص\n")
+    response = hover_at(server, 1)
+    assert response is not None
+    assert "صنف" in response["result"]["contents"]["value"]
+
+
+def test_document_symbols_include_interfaces_with_their_signatures():
+    server, _ = make_server()
+    open_doc(
+        server,
+        "واجهة قابل_للطباعة\n"
+        "    دالة اطبع_نفسك() : نص\n"
+        "خلاص\n",
+    )
+    response = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": "file.arb"}},
+        }
+    )
+    assert response is not None
+    interface = next(
+        symbol for symbol in response["result"] if symbol["name"] == "قابل_للطباعة"
+    )
+    assert interface["kind"] == 5  # interface shown as a class-like symbol
+    assert [child["name"] for child in interface["children"]] == ["اطبع_نفسك"]
+
+
+def test_hover_explains_the_interface_keyword():
+    server, _ = make_server()
+    open_doc(server, "واجهة قابل_للطباعة\nخلاص\n")
+    response = hover_at(server, 1)
+    assert response is not None
+    assert "واجهة" in response["result"]["contents"]["value"]
+
+
 # -------------------------------------------------------------- serve loop
 
 
