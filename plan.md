@@ -2,7 +2,7 @@
 
 # خطة العمل المتبقية — AlArabiya
 
-> **آخر تحديث:** 2026-11-09 · **خط الأساس:** `bd0dcd8` · **البوابات الحالية:** 731 اختبار على Linux / 729 على Windows (+2 skip) · `ruff` نضيف · `mypy strict` على 46 ملف · CI أخضر على Ubuntu/Windows × 3.12/3.13/3.14.
+> **آخر تحديث:** 2026-11-09 · **خط الأساس:** `bd0dcd8` · **البوابات الحالية:** 775 اختبارًا مجموعًا (771 ناجح + 4 skip على Windows) · `ruff` نضيف · `mypy strict` على 47 ملف · CI أخضر على Ubuntu/Windows × 3.12/3.13/3.14.
 
 البنود هنا هي **فقط** ما لم يُنفَّذ، أو نُفِّذ جزئيًا بحدود مكتوبة. كل بند مغلق لا يُعاد فتحه. الحالة التفصيلية في [`docs/current-feature-status.md`](docs/current-feature-status.md)، والدين في [`docs/technical-debt.md`](docs/technical-debt.md)، والمراحل في [`docs/arbic-2.0-roadmap.md`](docs/arbic-2.0-roadmap.md).
 
@@ -45,10 +45,14 @@
 
 ### Phase 4 — نظام الأنواع والتحليل الدلالي
 
-- [ ] Symbol tables + module-aware analysis (التحليل الحالي ملف واحد).
-- [ ] أنواع كاملة: `قائمة[T]`، `قاموس[K,V]`، `اختياري[T]`، union types، استدلال محلي.
-- [ ] strict mode + قرار موثّق: هل يفرض `run` الأنواع أم يظل `check` وحده؟
-- [ ] اختبار سلبي لكل عملية نوعية غير صالحة.
+- [x] Symbol tables + module-aware analysis (التحليل الحالي ملف واحد).
+- [x] أنواع كاملة: `قائمة[T]`، `قاموس[K,V]`، `اختياري[T]`، union types، استدلال محلي.
+- [x] strict mode + قرار موثّق: هل يفرض `run` الأنواع أم يظل `check` وحده؟
+- [x] اختبار سلبي لكل عملية نوعية غير صالحة.
+
+> **منفّذ:** `compiler/types.py` + `checker.py` (Scopes/Symbols، أنواع كاملة،
+> تحليل وحدات عبر نفس `ModuleLoader`، `--strict`)، والأكواد `E5004`–`E5008`،
+> والقرار في ADR-05. `run` فضل ديناميكيًا.
 
 ### Phase 9 — أدوات المطوّر (الناقص)
 
@@ -105,7 +109,7 @@
 - [ ] **TD-14:** property tests وأنظمة ملفات غير مصرّح بها.
 - [ ] **TD-15:** أرقام أداء تاريخية بدل لقطة واحدة.
 - [ ] **TD-20:** تحديث الحدود بعد Windows/macOS.
-- [ ] **TD-09:** strict/module-aware (تكرار مع Phase 4).
+- [x] **TD-09:** strict/module-aware (تكرار مع Phase 4).
 - [ ] مزامنة `docs/current-feature-status.md` بعد كل مرحلة.
 
 ---

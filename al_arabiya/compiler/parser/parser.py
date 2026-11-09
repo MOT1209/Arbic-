@@ -477,20 +477,50 @@ class Parser:
         )
 
     def _parse_optional_type(self) -> TypeName | None:
-        """Parse ``: <type-name>`` when present; otherwise return ``None``."""
+        """Parse ``: <type>`` when present; otherwise return ``None``."""
         if not self._match(TokenType.COLON):
             return None
+        return self._parse_type()
+
+    def _parse_type(self) -> TypeName:
+        """Parse a type: named types with generics, and ``أو`` unions."""
+        first = self._parse_type_atom()
+        members = [first]
+        while self._match(TokenType.KW_OR):
+            members.append(self._parse_type_atom())
+        if len(members) == 1:
+            return first
+        return TypeName(
+            Span(first.span.start, members[-1].span.end), "أو", members=members
+        )
+
+    def _parse_type_atom(self) -> TypeName:
         if self._check(TokenType.IDENTIFIER) or self._peek().type in _TYPE_KEYWORDS:
             token = self._advance()
         else:
             raise self._make_error(
                 self._peek(),
                 ErrorCode.EXPECTED_IDENTIFIER,
-                "بعد ':' لازم يجي اسم نوع (رقم، نص، منطقي، قائمة، قاموس، ...)",
+                "بعد ':' لازم يجي اسم نوع (رقم، نص، قائمة، قاموس، اختياري، ...)",
                 suggestion="مثال: خلي العمر : رقم = 25",
             )
         assert isinstance(token.value, str)
-        return TypeName(token.span, token.value)
+        arguments: list[TypeName] = []
+        end = token.span.end
+        if self._match(TokenType.LBRACKET):
+            arguments.append(self._parse_type())
+            while self._match(TokenType.COMMA):
+                arguments.append(self._parse_type())
+            closing = self._expect(
+                TokenType.RBRACKET,
+                ErrorCode.EXPECTED_TOKEN,
+                "قوس '[' في النوع مش متقفل",
+                suggestion="اقفل النوع بـ ']'، مثال: قائمة[رقم]",
+            )
+            end = closing.span.end
+        return TypeName(
+            Span(token.span.start, end), token.value, arguments=arguments
+        )
 
     # ------------------------------------------------------------- statements
 

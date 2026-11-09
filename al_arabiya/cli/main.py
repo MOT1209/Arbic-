@@ -190,7 +190,7 @@ def cmd_bench(path: str, iterations: int = 3) -> int:
     return 0
 
 
-def cmd_check(path: str) -> int:
+def cmd_check(path: str, *, strict: bool = False) -> int:
     source = _read_source(path)
     if source is None:
         return 2
@@ -203,7 +203,12 @@ def cmd_check(path: str) -> int:
 
     # Static (gradual) type checking runs only once the syntax is clean.
     if result.program is not None:
-        type_bag = check_types(result.program)
+        type_bag = check_types(
+            result.program,
+            strict=strict,
+            base_dir=str(Path(path).resolve().parent),
+            filename=path,
+        )
         if type_bag:
             _emit_diagnostics(type_bag.sorted(), result.source)
         if type_bag.has_errors:
@@ -452,7 +457,11 @@ def cmd_build(rest: list[str]) -> int:
         if result.program is None or result.has_errors:
             failed += 1
             continue
-        type_bag = check_types(result.program)
+        type_bag = check_types(
+            result.program,
+            base_dir=str(program.resolve().parent),
+            filename=str(program),
+        )
         if type_bag:
             _emit_diagnostics(type_bag.sorted(), result.source)
         if type_bag.has_errors:
@@ -586,7 +595,7 @@ def cmd_help() -> int:
         "\n"
         "الاستخدام:\n"
         "  arabic run <ملف.arb>    تشغيل ملف (--vm لآلة البايت-كود، --sandbox لعزل التنفيذ)\n"
-        "  arabic check <ملف.arb>  تحليل بدون تشغيل (بيطبع كل الأخطاء)\n"
+        "  arabic check <ملف.arb>  تحليل بدون تشغيل (--strict للوضع الصارم)\n"
         "  arabic build [مجلد]    تحقق شامل من كل ملفات المشروع\n"
         "  arabic test [مجلد]     يشغّل ملفات اختبارات/*.arb\n"
         "  arabic format [مسار]   ينسّق المسافات (--check يعرض من غير ما يكتب)\n"
@@ -650,6 +659,17 @@ def main(argv: list[str] | None = None) -> int:
     if name == "format":
         return cmd_format(rest)
 
+    if name == "check":
+        unknown = [a for a in rest if a.startswith("-") and a != "--strict"]
+        files = [a for a in rest if not a.startswith("-")]
+        if unknown:
+            sys.stderr.write(f"❌ خيار مش معروف: {unknown[0]}\n")
+            return 2
+        if len(files) != 1:
+            sys.stderr.write("❌ الأمر 'check' محتاج اسم ملف واحد\n")
+            return 2
+        return cmd_check(files[0], strict="--strict" in rest)
+
     try:
         use_vm, sandbox, timeout, memory, files = _parse_run_args(rest)
     except _UsageError as exc:
@@ -658,8 +678,6 @@ def main(argv: list[str] | None = None) -> int:
     if len(files) != 1:
         sys.stderr.write(f"❌ الأمر '{name}' محتاج اسم ملف واحد\n")
         return 2
-    if name == "check":
-        return cmd_check(files[0])
     if name == "bench":
         return cmd_bench(files[0])
     return cmd_run(

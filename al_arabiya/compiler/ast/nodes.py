@@ -72,9 +72,16 @@ class ASTNode:
 
 @dataclass(slots=True)
 class TypeName(ASTNode):
-    """An optional type annotation, e.g. ``رقم`` / ``نص`` / ``قائمة``."""
+    """An optional type annotation.
+
+    Named types carry their generic arguments (``قائمة[رقم]``).  A union such
+    as ``رقم أو نص`` has ``name == "أو"`` and holds its alternatives in
+    ``members`` instead.
+    """
 
     name: str
+    arguments: list[TypeName] = field(default_factory=list)
+    members: list[TypeName] = field(default_factory=list)
 
 
 # ----------------------------------------------------------------- statements

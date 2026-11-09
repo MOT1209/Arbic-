@@ -27,7 +27,7 @@ arabic run examples/hello.arb
 - **حلقة `لكل`** للمرور على القوائم والنصوص والقواميس
 - **وحدات واستيراد**: `استورد "ملف"` · `باسم` · `من ... استورد`
 - **معالجة الأخطاء**: `حاول` · `امسك` · `أخيرا` · `ارم`
-- **فحص أنواع ثابت اختياري** (تدريجي): `خلي س : رقم = 5` — عبر `arabic check`
+- **نظام أنواع كامل** (تدريجي + وضع صارم): `رقم`/`نص`/`منطقي`/`فراغ`، و`قائمة[T]`، و`قاموس[K، V]`، و`اختياري[T]`، واتحاد `رقم أو نص`، ومع جدول رموز وتحليل واعٍ بالوحدات — عبر `arabic check [--strict]`
 - **خادم محرّر (LSP)**: تشخيصات مباشرة + إكمال + hover — `arabic lsp`
 - **آلة بايت-كود (VM)** اختيارية أسرع ~٣× (قوائم/قواميس/استثناءات/وحدات/إغلاقات) — `arabic run --vm` · `arabic bench`
 - **مدير حزم محلّي**: `حزمة.json` + تثبيت من سجلّ محلّي في `حزم/` — مع منع `symlinks` وبصمات sha256 اختيارية — `arabic packages install`
@@ -109,7 +109,7 @@ pip install -e .
 - [`docs/migration-2.0.md`](docs/migration-2.0.md) — دليل الترقية والكسور السلوكية المعروفة
 - [`docs/language/syntax.md`](docs/language/syntax.md) — قواعد اللغة والقواعد النحوية
 - [`docs/language/stdlib.md`](docs/language/stdlib.md) — المكتبة المدمجة (الدوال الجاهزة)
-- [`examples/types.arb`](examples/types.arb) — تعليقات الأنواع والفحص الثابت (`arabic check`)
+- [`examples/types.arb`](examples/types.arb) — الأنواع: `قائمة[T]`، `قاموس[K، V]`، `اختياري[T]`، الاتحاد، والفحص الصارم
 - [`examples/classes.arb`](examples/classes.arb) — الأصناف والخصائص والطرق الساكنة والوراثة والتغليف والواجهات
 - [`docs/tools/lsp.md`](docs/tools/lsp.md) — خادم المحرّر (LSP) وربطه بـ VS Code
 - [`docs/architecture/bytecode-vm.md`](docs/architecture/bytecode-vm.md) — آلة البايت-كود والأداء

@@ -49,13 +49,13 @@
 ```text
 program     = { statement } EOF ;
 statement   = "اطبع" expression NEWLINE
-            | "خلي" IDENT [ ":" typeName ] "=" expression NEWLINE
+            | "خلي" IDENT [ ":" type ] "=" expression NEWLINE
             | assignOrExpr NEWLINE
             | "لو" expression NEWLINE { statement } [ "غير" "كده" NEWLINE { statement } ] "خلاص" NEWLINE
             | "كرر" expression "مرات" NEWLINE { statement } "خلاص" NEWLINE
             | "طالما" expression NEWLINE { statement } "خلاص" NEWLINE
             | "لكل" IDENT "في" expression NEWLINE { statement } "خلاص" NEWLINE
-            | { "مزخرف" expression NEWLINE } "دالة" IDENT "(" [ params ] ")" [ ":" typeName ]
+            | { "مزخرف" expression NEWLINE } "دالة" IDENT "(" [ params ] ")" [ ":" type ]
               NEWLINE { statement } "خلاص" NEWLINE
             | "استخدم" expression "باسم" IDENT NEWLINE { statement } "خلاص" NEWLINE
             | "طابق" expression NEWLINE { matchCase }
@@ -72,12 +72,14 @@ statement   = "اطبع" expression NEWLINE
               [ "أخيرا" NEWLINE { statement } ] "خلاص" NEWLINE
             | "ارم" expression NEWLINE ;
 
-method      = "دالة" [ "ساكنة" ] IDENT "(" [ params ] ")" [ ":" typeName ]
+method      = "دالة" [ "ساكنة" ] IDENT "(" [ params ] ")" [ ":" type ]
               NEWLINE { statement } "خلاص" NEWLINE ;
 classMember = [ "خاص" ] ( method | IDENT NEWLINE ) ;
-signature   = "دالة" [ "ساكنة" ] IDENT "(" [ params ] ")" [ ":" typeName ] NEWLINE ;
+signature   = "دالة" [ "ساكنة" ] IDENT "(" [ params ] ")" [ ":" type ] NEWLINE ;
 matchCase   = "حالة" pattern [ "لو" expression ] NEWLINE { statement } ;
 pattern     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT | "_" ;
+type        = typeAtom { "أو" typeAtom } ;
+typeAtom    = ( IDENT | "فراغ" | "دالة" | "صنف" ) [ "[" type { "," type } "]" ] ;
 
 assignOrExpr = expression [ "=" expression ] | IDENT "[" expression "]" "=" expression
              | expression "." IDENT "=" expression ;
@@ -96,7 +98,7 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
             | "[" [ expression { "," expression } ] "]"
             | "{" [ expression ":" expression { "," expression ":" expression } ] "}"
             | "(" expression ")"
-            | "دالة" "(" [ params ] ")" [ ":" typeName ] NEWLINE { statement } "خلاص" ;
+            | "دالة" "(" [ params ] ")" [ ":" type ] NEWLINE { statement } "خلاص" ;
 ```
 
 - الفواصل: `،` العربية و`,` الإنجليزية متكافئتان.
@@ -209,13 +211,22 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 - `أخيرا` بتشتغل دايمًا، حتى مع `رجّع`/`اكسر`/`كمل`.
 - خطأ غير متمسك → `E4018` وكود خروج `1`.
 
-## 8. الأنواع الاختيارية
+## 8. الأنواع والفحص الثابت
 
 - تعليقات `: نوع` على المتغيّرات والمعاملات ونوع الإرجاع.
-- الأنواع: `رقم` `نص` `منطقي` `فراغ` `قائمة` `قاموس` `دالة` `صنف` `أي`.
-- تدريجي: بدون تعليق = `أي` ومتوافق مع الكل.
-- الفحص **في `arabic check` بس**؛ `arabic run` بيتجاهل التعليقات.
-- `E5001` عدم تطابق، `E5002` نوع غير معروف، `E5003` عدد مدخلات غلط.
+- الأنواع: `رقم` `نص` `منطقي` `فراغ` `قائمة[T]` `قاموس[K، V]` `اختياري[T]`
+  `دالة` `صنف` `أي`، والاتحاد `أ أو ب` (`اختياري[T]` سكر لـ`T أو فراغ`).
+- تدريجي: بدون تعليق = `أي` ومتوافق مع الكل. القوائم والقواميس invariant،
+  والاستدلال المحلي بيعطي `[1، "نص"]` النوع `قائمة[رقم أو نص]`.
+- الفحص **في `arabic check` و`arabic build` بس**؛ `arabic run` بيتجاهل
+  التعليقات ويفضل ديناميكيًا (ADR-05).
+- **جدول رموز** لكل نطاق (الوحدات والدوال) + **تحليل واعٍ بالوحدات**: كل وحدة
+  مستوردة بتتفحص مرة واحدة وأسماؤها المصدَّرة بتاخد أنواعها، وبنفس قواعد
+  المسارات الأمنية بتاعة وقت التشغيل.
+- **الوضع الصارم** `arabic check --strict`: تعليق نوع إلزامي على كل متغيّر
+  ومعامل وإرجاع، وكل اسم لازم يكون معرّف (الـ lambda مستثناة من التعليقات).
+- الأكواد: `E5001`–`E5008` (عدم تطابق، نوع غير معروف، عدد مدخلات، تعليق ناقص،
+  أنواع فرعية غلط، اسم مستورد غير موجود، وحدة غير قابلة للتحليل، اسم غير معرّف).
 
 ## 9. الحزم
 
@@ -236,7 +247,7 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 
 ## 11. حدود معروفة (خارج المواصفة)
 
-مفيش: وراثة متعددة، وراثة واجهات/default methods، generics،
+مفيش: وراثة متعددة، وراثة واجهات/default methods،
 `ثابت`، sets/tuples، شرائح، interpolation، async/await،
 playground، سجلّ حزم على الإنترنت، Python interop، IR،
 optimizer. والمنسّق (`arabic format`) بيوحّد المسافات بس، وعزل التنفيذ
