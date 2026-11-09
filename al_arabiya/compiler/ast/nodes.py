@@ -50,6 +50,7 @@ __all__ = [
     "UnaryExpression",
     "VariableDeclaration",
     "WhileStatement",
+    "YieldStatement",
 ]
 
 #: Binary/unary operators are normalised to these canonical forms at build
@@ -155,6 +156,7 @@ class FunctionDeclaration(Statement):
     parameters: list[Parameter]
     body: list[Statement]
     return_type: TypeName | None = None
+    decorators: list[Expression] = field(default_factory=list)
 
     @property
     def params(self) -> list[Parameter]:
@@ -276,6 +278,13 @@ class BreakStatement(Statement):
 @dataclass(slots=True)
 class ContinueStatement(Statement):
     """``كمل`` — jump to the next iteration of the innermost loop."""
+
+
+@dataclass(slots=True)
+class YieldStatement(Statement):
+    """``انتج <expr>`` — produce one value from a generator function."""
+
+    value: Expression
 
 
 @dataclass(slots=True)

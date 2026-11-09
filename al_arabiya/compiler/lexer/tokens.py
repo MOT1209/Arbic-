@@ -69,6 +69,8 @@ class TokenType(Enum):
     KW_CATCH = "امسك"
     KW_FINALLY = "أخيرا"
     KW_THROW = "ارم"
+    KW_DECORATOR = "مزخرف"
+    KW_YIELD = "انتج"
 
     # --- operators ---
     PLUS = "+"
@@ -104,6 +106,7 @@ KEYWORDS: dict[str, TokenType] = {
 KEYWORDS["رجع"] = TokenType.KW_RETURN  # ``رجّع`` without the shadda
 KEYWORDS["ارمي"] = TokenType.KW_THROW  # ``ارم`` with the ya
 KEYWORDS["أخيراً"] = TokenType.KW_FINALLY  # ``أخيرا`` with tanwin
+KEYWORDS["أنتج"] = TokenType.KW_YIELD  # ``انتج`` with hamza
 
 
 @dataclass(frozen=True, slots=True)

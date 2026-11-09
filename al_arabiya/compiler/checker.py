@@ -45,6 +45,7 @@ from al_arabiya.compiler.ast.nodes import (
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    YieldStatement,
 )
 from al_arabiya.compiler.diagnostics.diagnostics import DiagnosticBag
 from al_arabiya.compiler.diagnostics.errors import ErrorCode
@@ -155,6 +156,8 @@ class TypeChecker:
             self._infer(node.expression)
         elif isinstance(node, ThrowStatement):
             self._infer(node.value)
+        elif isinstance(node, YieldStatement):
+            self._infer(node.value)
         elif isinstance(node, IfStatement):
             self._infer(node.condition)
             self._check_block(node.then_body)
@@ -212,6 +215,12 @@ class TypeChecker:
                 self._define(node.target, value_type)
 
     def _check_function(self, node: FunctionDeclaration) -> None:
+        for decorator in node.decorators:
+            decorator_type = self._infer(decorator)
+            if decorator_type not in (T_FUNC, T_ANY):
+                self._mismatch(
+                    T_FUNC, decorator_type, decorator.span, "مزخرف"
+                )
         parameter_types = [self._resolve_annotation(p.declared_type) for p in node.parameters]
         return_type = self._resolve_annotation(node.return_type)
         self._functions[node.name] = _FunctionSignature(parameter_types, return_type)

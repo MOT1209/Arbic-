@@ -49,6 +49,7 @@ from al_arabiya.compiler.ast.nodes import (
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    YieldStatement,
 )
 from al_arabiya.compiler.diagnostics.diagnostics import DiagnosticBag
 from al_arabiya.compiler.diagnostics.errors import ErrorCode, ParseError
@@ -527,6 +528,10 @@ class Parser:
             return self._parse_try()
         if token_type is TokenType.KW_THROW:
             return self._parse_throw()
+        if token_type is TokenType.KW_YIELD:
+            return self._parse_yield()
+        if token_type is TokenType.KW_DECORATOR:
+            return self._parse_decorated_function()
         if token_type is TokenType.IDENTIFIER and self._peek(1).type is TokenType.ASSIGN:
             return self._parse_assignment()
         return self._parse_expression_statement(token)
@@ -792,6 +797,34 @@ class Parser:
         end = self._prev.span.end
         self._end_statement()
         return WhileStatement(Span(keyword.span.start, end), condition, body)
+
+    def _parse_decorated_function(self) -> FunctionDeclaration:
+        """``مزخرف <expr>`` lines directly before a function declaration."""
+        start = self._peek().span.start
+        decorators: list[Expression] = []
+        while self._match(TokenType.KW_DECORATOR):
+            decorators.append(self.parse_expression())
+            self._end_statement()
+        if not self._check(TokenType.KW_FUNC):
+            raise self._make_error(
+                self._peek(),
+                ErrorCode.UNEXPECTED_TOKEN,
+                "'مزخرف' لازم يتبعه تعريف دالة",
+                suggestion="اكتب 'دالة اسم()' في السطر اللي بعد المزخرف",
+            )
+        function = self._parse_function()
+        return replace(
+            function,
+            span=Span(start, function.span.end),
+            decorators=decorators,
+        )
+
+    def _parse_yield(self) -> YieldStatement:
+        keyword = self._advance()
+        value = self.parse_expression()
+        end = self._prev.span.end
+        self._end_statement()
+        return YieldStatement(Span(keyword.span.start, end), value)
 
     def _parse_function(self) -> FunctionDeclaration:
         keyword = self._advance()

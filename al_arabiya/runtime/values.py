@@ -9,7 +9,7 @@ small set of value helpers (:func:`format_value`, :func:`is_truthy`,
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -29,6 +29,7 @@ __all__ = [
     "BoundMethod",
     "BuiltinError",
     "ClassValue",
+    "GeneratorValue",
     "InstanceValue",
     "InterfaceValue",
     "LambdaFunction",
@@ -84,6 +85,13 @@ class LambdaFunction:
     @property
     def arity(self) -> int:
         return len(self.declaration.params)
+
+
+@dataclass(slots=True, eq=False)
+class GeneratorValue:
+    """A lazy generator produced by calling a function that uses ``انتج``."""
+
+    iterator: Iterator[Value]
 
 
 @dataclass(slots=True)
@@ -282,6 +290,7 @@ Value = (
     | BoundMethod
     | SuperValue
     | InterfaceValue
+    | GeneratorValue
     | list["Value"]
     | dict["Value", "Value"]
 )
@@ -305,6 +314,8 @@ def format_value(value: Value) -> str:
         return f"<الأساس {value.start.name}>"
     if isinstance(value, InterfaceValue):
         return f"<واجهة {value.name}>"
+    if isinstance(value, GeneratorValue):
+        return "<مولّد>"
     if isinstance(value, (ArabiyaFunction, LambdaFunction, NativeFunction)):
         return f"<دالة {value.name}>"
     if isinstance(value, list):
@@ -328,7 +339,9 @@ def is_truthy(value: Value) -> bool:
         value, (ArabiyaFunction, LambdaFunction, NativeFunction, BoundMethod)
     ):
         return True
-    if isinstance(value, (ClassValue, InstanceValue, SuperValue, InterfaceValue)):
+    if isinstance(
+        value, (ClassValue, InstanceValue, SuperValue, InterfaceValue, GeneratorValue)
+    ):
         return True
     return len(value) > 0
 
@@ -352,6 +365,8 @@ def describe_value(value: Value) -> str:
         return "أساس"
     if isinstance(value, InterfaceValue):
         return "واجهة"
+    if isinstance(value, GeneratorValue):
+        return "مولّد"
     if isinstance(value, list):
         return "قائمة"
     if isinstance(value, dict):

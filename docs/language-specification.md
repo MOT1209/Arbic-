@@ -55,11 +55,13 @@ statement   = "اطبع" expression NEWLINE
             | "كرر" expression "مرات" NEWLINE { statement } "خلاص" NEWLINE
             | "طالما" expression NEWLINE { statement } "خلاص" NEWLINE
             | "لكل" IDENT "في" expression NEWLINE { statement } "خلاص" NEWLINE
-            | "دالة" IDENT "(" [ params ] ")" [ ":" typeName ] NEWLINE { statement } "خلاص" NEWLINE
+            | { "مزخرف" expression NEWLINE } "دالة" IDENT "(" [ params ] ")" [ ":" typeName ]
+              NEWLINE { statement } "خلاص" NEWLINE
             | "صنف" IDENT [ "يرث" IDENT ] [ "ينفذ" IDENT { "," IDENT } ] NEWLINE
               { classMember } "خلاص" NEWLINE
             | "واجهة" IDENT NEWLINE { signature } "خلاص" NEWLINE
             | "رجّع" [ expression ] NEWLINE
+            | "انتج" expression NEWLINE
             | ( "اكسر" | "كمل" ) NEWLINE
             | "استورد" STRING [ "باسم" IDENT ] NEWLINE
             | "من" STRING "استورد" IDENT { "," IDENT } NEWLINE
@@ -139,6 +141,10 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 - `دالة (<معاملات>) ... خلاص` دالة مجهولة (lambda) في مكان التعبير: نفس قواعد
   الجسم والإغلاق، والجسم لازم يبدأ في سطر جديد. نوعها `دالة` وبتتطبع
   `<دالة مجهولة>`.
+- `مزخرف <تعبير>` قبل `دالة` بيطبّق المزخرفات من الأقرب للأبعد؛ المزخرف لازم
+  يقبل وسيطًا واحدًا (الدالة) ويرجّع القيمة التي تحلّ محلّ الاسم.
+- أي دالة فيها `انتج <تعبير>` بترجّع مولّدًا كسولًا يتنفّذ عند الطلب، وينتهي
+  بـ `رجّع` أو بآخر جسمها. المولّد بيتطبع `<مولّد>` وبيُستهلك بـ `لكل`.
 
 ### 5.7 القوائم والقواميس
 
@@ -220,9 +226,9 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 
 ## 11. حدود معروفة (خارج المواصفة)
 
-مفيش: وراثة متعددة، وراثة واجهات/default methods، decorators، pattern matching، generics،
+مفيش: وراثة متعددة، وراثة واجهات/default methods، pattern matching، generics،
 `ثابت`، sets/tuples، شرائح، interpolation، async/await،
-generators، playground، سجلّ حزم على الإنترنت، Python interop، IR،
+playground، سجلّ حزم على الإنترنت، Python interop، IR،
 optimizer. والمنسّق (`arabic format`) بيوحّد المسافات بس، وعزل التنفيذ
 (`--sandbox`) بيشغّل عاملًا منفصلًا بحدود وقت/ذاكرة/مخرجات، وعلى Linux x86_64
 بيحجب الشبكة وكتابة الملفات بـ seccomp؛ Windows/macOS لسه بدون حجب OS

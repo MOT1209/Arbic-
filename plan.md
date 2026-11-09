@@ -2,7 +2,7 @@
 
 # خطة العمل المتبقية — AlArabiya
 
-> **آخر تحديث:** 2026-11-09 · **خط الأساس:** `bd0dcd8` · **البوابات الحالية:** 679 اختبار على Linux / 677 على Windows (+2 skip) · `ruff` نضيف · `mypy strict` على 46 ملف · CI أخضر على Ubuntu/Windows × 3.12/3.13/3.14.
+> **آخر تحديث:** 2026-11-09 · **خط الأساس:** `bd0dcd8` · **البوابات الحالية:** 700 اختبار على Linux / 698 على Windows (+2 skip) · `ruff` نضيف · `mypy strict` على 46 ملف · CI أخضر على Ubuntu/Windows × 3.12/3.13/3.14.
 
 البنود هنا هي **فقط** ما لم يُنفَّذ، أو نُفِّذ جزئيًا بحدود مكتوبة. كل بند مغلق لا يُعاد فتحه. الحالة التفصيلية في [`docs/current-feature-status.md`](docs/current-feature-status.md)، والدين في [`docs/technical-debt.md`](docs/technical-debt.md)، والمراحل في [`docs/arbic-2.0-roadmap.md`](docs/arbic-2.0-roadmap.md).
 
@@ -38,7 +38,8 @@
 - [x] وراثة مفردة (`يرث`) + `الأساس` + تهيئة الأب، بقرار موثّق في ADR-03. (الوراثة المتعددة مرفوضة في هذه المرحلة.)
 - [x] تغليف/خصوصية (`خاص` للحقول والطرق) + واجهات (`واجهة`/`ينفذ`)، بقرار موثّق في ADR-04. (مفيش `محمي` ولا وراثة واجهات.)
 - [x] lambda (دوال مجهولة) كتعبير: parser + AST + مفسّر + فاحص + توثيق + مثال + اختبارات؛ الـ VM بيرجع للمفسّر.
-- [ ] دوال عالية الرتبة + decorators + generators + context managers + pattern matching تدريجيًا.
+- [x] decorators (`مزخرف`) + generators (`انتج`): parser + AST + مفسّر + فاحص + توثيق + مثال + اختبارات؛ الـ VM بيرجع للمفسّر.
+- [ ] دوال عالية الرتبة + context managers + pattern matching تدريجيًا.
 - [ ] دعم كامل: parser + AST + مفسّر + VM + فاحص أنواع + LSP + توثيق + أمثلة + اختبارات رجعية.
 - [x] ADR لدلالات الوراثة والتهيئة قبل الكود. (`docs/architecture/adr-03-inheritance.md`.)
 

@@ -83,6 +83,7 @@ class ErrorCode(StrEnum):
     PRIVATE_MEMBER_CONFLICT = "E4023"
     INVALID_INTERFACE = "E4024"
     MISSING_INTERFACE_MEMBER = "E4025"
+    YIELD_OUTSIDE_GENERATOR = "E4026"
 
 
 class AlArabiyaError(Exception):

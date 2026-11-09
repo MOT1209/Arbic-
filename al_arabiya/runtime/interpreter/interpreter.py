@@ -8,7 +8,7 @@ carrying a full diagnostic with source location.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any, TypeGuard, cast
 
 from al_arabiya.compiler.ast.nodes import (
@@ -40,12 +40,14 @@ from al_arabiya.compiler.ast.nodes import (
     Program,
     RepeatStatement,
     ReturnStatement,
+    Statement,
     ThrowStatement,
     TryStatement,
     TypeName,
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    YieldStatement,
 )
 from al_arabiya.compiler.ast.visitor import ASTVisitor
 from al_arabiya.compiler.diagnostics.diagnostics import Diagnostic, DiagnosticBag, Severity
@@ -60,6 +62,7 @@ from al_arabiya.runtime.values import (
     BoundMethod,
     BuiltinError,
     ClassValue,
+    GeneratorValue,
     InstanceValue,
     InterfaceValue,
     LambdaFunction,
@@ -76,6 +79,29 @@ _MAX_LOOP_ITERATIONS = 1_000_000
 
 # Backwards-compatible alias (older call sites used ``_describe``).
 _describe = describe_value
+
+
+def _body_has_yield(body: list[Statement]) -> bool:
+    """True when ``body`` contains ``انتج`` outside nested callables/classes."""
+    for statement in body:
+        if isinstance(statement, YieldStatement):
+            return True
+        if isinstance(statement, IfStatement):
+            if _body_has_yield(statement.then_body):
+                return True
+            if statement.else_body is not None and _body_has_yield(statement.else_body):
+                return True
+        elif isinstance(statement, (RepeatStatement, WhileStatement, ForEachStatement)):
+            if _body_has_yield(statement.body):
+                return True
+        elif isinstance(statement, TryStatement):
+            if _body_has_yield(statement.try_body):
+                return True
+            if statement.catch_body is not None and _body_has_yield(statement.catch_body):
+                return True
+            if statement.finally_body is not None and _body_has_yield(statement.finally_body):
+                return True
+    return False
 
 
 def _is_number(value: Value) -> TypeGuard[int | float]:
@@ -255,38 +281,7 @@ class Interpreter(ASTVisitor):
                 )
 
     def visit_repeat_statement(self, node: RepeatStatement) -> None:
-        count = self._eval(node.count)
-        if isinstance(count, bool) or not isinstance(count, (int, float)):
-            raise ArabiyaRuntimeError(
-                Diagnostic(
-                    code=ErrorCode.INVALID_REPEAT_COUNT,
-                    severity=Severity.ERROR,
-                    message="عدد التكرار لازم يكون رقم",
-                    span=node.count.span,
-                    suggestion="مثال: كرر 3 مرات",
-                )
-            )
-        if isinstance(count, float) and not count.is_integer():
-            raise ArabiyaRuntimeError(
-                Diagnostic(
-                    code=ErrorCode.INVALID_REPEAT_COUNT,
-                    severity=Severity.ERROR,
-                    message="عدد التكرار لازم يكون عدد صحيح",
-                    span=node.count.span,
-                    suggestion="مثال: كرر 3 مرات",
-                )
-            )
-        if count < 0:
-            raise ArabiyaRuntimeError(
-                Diagnostic(
-                    code=ErrorCode.INVALID_REPEAT_COUNT,
-                    severity=Severity.ERROR,
-                    message="عدد التكرار مينفعش يكون سالب",
-                    span=node.count.span,
-                    suggestion="استخدم صفر أو عدد موجب",
-                )
-            )
-        for _ in range(int(count)):
+        for _ in range(self._repeat_count(node)):
             try:
                 for statement in node.body:
                     self.visit(statement)
@@ -297,6 +292,24 @@ class Interpreter(ASTVisitor):
 
     def visit_function_declaration(self, node: FunctionDeclaration) -> None:
         self.environment.define(node.name, ArabiyaFunction(node, self.environment))
+        # Decorators apply closest-first: ``مزخرف أ`` then ``مزخرف ب``
+        # means ``أ(ب(الدالة))``.
+        for decorator in reversed(node.decorators):
+            decorator_value = self._eval(decorator)
+            decorated = self._call_value(
+                decorator_value,
+                [self.environment.get(node.name, node.name_span)],
+                decorator.span,
+            )
+            self.environment.define(node.name, decorated)
+
+    def visit_yield_statement(self, node: YieldStatement) -> None:
+        raise self._control_error(
+            ErrorCode.YIELD_OUTSIDE_GENERATOR,
+            "'انتج' اتنفّذ برّه دالة مولّد",
+            node.span,
+            "'انتج' بيشتغل جوّه دالة عادية بس، مش جوّه طريقة صنف",
+        )
 
     def visit_lambda_expression(self, node: LambdaExpression) -> Value:
         return LambdaFunction(node, self.environment)
@@ -535,19 +548,55 @@ class Interpreter(ASTVisitor):
             except _Break:
                 break
 
-    def _iterate(self, value: Value, span: Span) -> list[Value]:
+    def _iterate(self, value: Value, span: Span) -> Iterable[Value]:
         if isinstance(value, list):
             return list(value)
         if isinstance(value, str):
             return list(value)
         if isinstance(value, dict):
             return list(value.keys())
+        if isinstance(value, GeneratorValue):
+            return value.iterator
         raise self._control_error(
             ErrorCode.NOT_ITERABLE,
             f"مينفعش أدور على {describe_value(value)} بـ 'لكل'",
             span,
-            "استخدم 'لكل' مع قائمة أو نص أو قاموس",
+            "استخدم 'لكل' مع قائمة أو نص أو قاموس أو مولّد",
         )
+
+    def _repeat_count(self, node: RepeatStatement) -> int:
+        count = self._eval(node.count)
+        if isinstance(count, bool) or not isinstance(count, (int, float)):
+            raise ArabiyaRuntimeError(
+                Diagnostic(
+                    code=ErrorCode.INVALID_REPEAT_COUNT,
+                    severity=Severity.ERROR,
+                    message="عدد التكرار لازم يكون رقم",
+                    span=node.count.span,
+                    suggestion="مثال: كرر 3 مرات",
+                )
+            )
+        if isinstance(count, float) and not count.is_integer():
+            raise ArabiyaRuntimeError(
+                Diagnostic(
+                    code=ErrorCode.INVALID_REPEAT_COUNT,
+                    severity=Severity.ERROR,
+                    message="عدد التكرار لازم يكون عدد صحيح",
+                    span=node.count.span,
+                    suggestion="مثال: كرر 3 مرات",
+                )
+            )
+        if count < 0:
+            raise ArabiyaRuntimeError(
+                Diagnostic(
+                    code=ErrorCode.INVALID_REPEAT_COUNT,
+                    severity=Severity.ERROR,
+                    message="عدد التكرار مينفعش يكون سالب",
+                    span=node.count.span,
+                    suggestion="استخدم صفر أو عدد موجب",
+                )
+            )
+        return int(count)
 
     def visit_member_assignment(self, node: MemberAssignment) -> None:
         target = self._eval(node.target)
@@ -772,6 +821,7 @@ class Interpreter(ASTVisitor):
                 NativeFunction,
                 BoundMethod,
                 ClassValue,
+                GeneratorValue,
                 InstanceValue,
                 SuperValue,
                 InterfaceValue,
@@ -788,18 +838,24 @@ class Interpreter(ASTVisitor):
     def visit_call_expression(self, node: CallExpression) -> Value:
         callee = self._eval(node.callee)
         arguments = [self._eval(argument) for argument in node.arguments]
+        return self._call_value(callee, arguments, node.span)
+
+    def _call_value(
+        self, callee: Value, arguments: list[Value], span: Span
+    ) -> Value:
+        """Call any callable value (used by calls and by decorator application)."""
         if isinstance(callee, NativeFunction):
-            return self._call_native(callee, arguments, node.span)
+            return self._call_native(callee, arguments, span)
         if isinstance(callee, (ArabiyaFunction, LambdaFunction)):
-            return self._call_function(callee, arguments, node.span)
+            return self._call_function(callee, arguments, span)
         if isinstance(callee, ClassValue):
-            return self._instantiate(callee, arguments, node.span)
+            return self._instantiate(callee, arguments, span)
         if isinstance(callee, BoundMethod):
-            return self._call_method(callee, arguments, node.span)
+            return self._call_method(callee, arguments, span)
         raise self._control_error(
             ErrorCode.NOT_CALLABLE,
             f"{describe_value(callee)} مش دالة عشان تناديها",
-            node.span,
+            span,
             "نادِ دالة معرّفة بـ 'دالة' أو دالة مدمجة زي 'طول'",
         )
 
@@ -826,6 +882,10 @@ class Interpreter(ASTVisitor):
         call_scope = fn.closure.child()
         for parameter, argument in zip(fn.declaration.parameters, arguments, strict=True):
             call_scope.define(parameter.name, argument)
+        if _body_has_yield(fn.declaration.body):
+            return GeneratorValue(
+                self._generator_body(fn.declaration.body, call_scope)
+            )
         return self._execute_body(fn.declaration, call_scope)
 
     def _call_method(
@@ -873,6 +933,99 @@ class Interpreter(ASTVisitor):
             ) from None
         finally:
             self.environment = previous
+
+    def _generator_body(
+        self, body: list[Statement], scope: Environment
+    ) -> Iterator[Value]:
+        """Run a function body lazily, suspending at every ``انتج``."""
+        previous = self.environment
+        self.environment = scope
+        try:
+            yield from self._generator_statements(body)
+        except _Return:
+            return
+        except (_Break, _Continue) as signal:
+            raise self._control_error(
+                ErrorCode.LOOP_CONTROL_OUTSIDE_LOOP,
+                "'اكسر'/'كمل' لازم تكون جوّه حلقة، مش بس جوّه دالة",
+                signal.span,
+                "استخدمهم داخل 'طالما' أو 'كرر'",
+            ) from None
+        finally:
+            self.environment = previous
+
+    def _generator_statements(self, body: list[Statement]) -> Iterator[Value]:
+        for statement in body:
+            if isinstance(statement, YieldStatement):
+                yield self._eval(statement.value)
+            elif isinstance(statement, IfStatement):
+                if is_truthy(self._eval(statement.condition)):
+                    yield from self._generator_statements(statement.then_body)
+                elif statement.else_body is not None:
+                    yield from self._generator_statements(statement.else_body)
+            elif isinstance(statement, RepeatStatement):
+                for _ in range(self._repeat_count(statement)):
+                    try:
+                        yield from self._generator_statements(statement.body)
+                    except _Continue:
+                        continue
+                    except _Break:
+                        break
+            elif isinstance(statement, WhileStatement):
+                iterations = 0
+                while is_truthy(self._eval(statement.condition)):
+                    try:
+                        yield from self._generator_statements(statement.body)
+                    except _Continue:
+                        pass
+                    except _Break:
+                        break
+                    iterations += 1
+                    if iterations > _MAX_LOOP_ITERATIONS:
+                        raise ArabiyaRuntimeError(
+                            Diagnostic(
+                                code=ErrorCode.LOOP_LIMIT_EXCEEDED,
+                                severity=Severity.ERROR,
+                                message=(
+                                    "التكرار مالوش نهاية "
+                                    "(طالما فضلت صح مليون مرة)"
+                                ),
+                                span=statement.span,
+                                suggestion=(
+                                    "راجع الشرط وتأكد إن المتغيّر "
+                                    "بيتأثر جوّا الحلقة"
+                                ),
+                            )
+                        )
+            elif isinstance(statement, ForEachStatement):
+                iterable = self._eval(statement.iterable)
+                for item in self._iterate(iterable, statement.iterable.span):
+                    self.environment.define(statement.variable, item)
+                    try:
+                        yield from self._generator_statements(statement.body)
+                    except _Continue:
+                        continue
+                    except _Break:
+                        break
+            elif isinstance(statement, TryStatement):
+                try:
+                    try:
+                        yield from self._generator_statements(statement.try_body)
+                    except (ArabiyaRuntimeError, _Raise) as exc:
+                        if statement.catch_body is None:
+                            raise
+                        if statement.catch_name is not None:
+                            self.environment.define(
+                                statement.catch_name, self._exception_value(exc)
+                            )
+                        yield from self._generator_statements(statement.catch_body)
+                finally:
+                    if statement.finally_body is not None:
+                        yield from self._generator_statements(
+                            statement.finally_body
+                        )
+            else:
+                self.visit(statement)
 
     def _instantiate(
         self, klass: ClassValue, arguments: list[Value], span: Span

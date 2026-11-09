@@ -45,6 +45,7 @@ from al_arabiya.compiler.ast.nodes import (
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    YieldStatement,
 )
 from al_arabiya.compiler.lexer.positions import Span
 from al_arabiya.runtime.values import Value
@@ -103,6 +104,10 @@ def _unsupported(node: ASTNode) -> str | None:
         return "'صنف'/'واجهة' والوصول للأعضاء لسه مش مدعومين على الـ VM"
     if isinstance(node, LambdaExpression):
         return "'دالة مجهولة' (lambda) لسه مش مدعومة على الـ VM"
+    if isinstance(node, YieldStatement):
+        return "'انتج' (المولّدات) لسه مش مدعوم على الـ VM"
+    if isinstance(node, FunctionDeclaration) and node.decorators:
+        return "'مزخرف' لسه مش مدعوم على الـ VM"
     if isinstance(node, TryStatement) and _try_has_escaping_jump(node):
         return "'حاول' مع 'رجّع/اكسر/كمل' بيعدّي 'أخيرا'"
     for child in _children(node):
