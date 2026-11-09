@@ -57,6 +57,9 @@ statement   = "اطبع" expression NEWLINE
             | "لكل" IDENT "في" expression NEWLINE { statement } "خلاص" NEWLINE
             | { "مزخرف" expression NEWLINE } "دالة" IDENT "(" [ params ] ")" [ ":" typeName ]
               NEWLINE { statement } "خلاص" NEWLINE
+            | "استخدم" expression "باسم" IDENT NEWLINE { statement } "خلاص" NEWLINE
+            | "طابق" expression NEWLINE { matchCase }
+              [ "غير" "كده" NEWLINE { statement } ] "خلاص" NEWLINE
             | "صنف" IDENT [ "يرث" IDENT ] [ "ينفذ" IDENT { "," IDENT } ] NEWLINE
               { classMember } "خلاص" NEWLINE
             | "واجهة" IDENT NEWLINE { signature } "خلاص" NEWLINE
@@ -73,6 +76,8 @@ method      = "دالة" [ "ساكنة" ] IDENT "(" [ params ] ")" [ ":" typeNam
               NEWLINE { statement } "خلاص" NEWLINE ;
 classMember = [ "خاص" ] ( method | IDENT NEWLINE ) ;
 signature   = "دالة" [ "ساكنة" ] IDENT "(" [ params ] ")" [ ":" typeName ] NEWLINE ;
+matchCase   = "حالة" pattern [ "لو" expression ] NEWLINE { statement } ;
+pattern     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT | "_" ;
 
 assignOrExpr = expression [ "=" expression ] | IDENT "[" expression "]" "=" expression
              | expression "." IDENT "=" expression ;
@@ -145,6 +150,11 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
   يقبل وسيطًا واحدًا (الدالة) ويرجّع القيمة التي تحلّ محلّ الاسم.
 - أي دالة فيها `انتج <تعبير>` بترجّع مولّدًا كسولًا يتنفّذ عند الطلب، وينتهي
   بـ `رجّع` أو بآخر جسمها. المولّد بيتطبع `<مولّد>` وبيُستهلك بـ `لكل`.
+- `استخدم <تعبير> باسم <اسم>` بيستدعي `__دخول__` ويحط ناتجها في الاسم،
+  و`__خروج__` بتتنفّذ دايمًا عند الخروج (نجاح/`رجّع`/`اكسر`/خطأ) ومبتشفش الخطأ.
+- `طابق` بيقيّم الموضوع مرة واحدة وبيقارن بأنماط حرفية أو اسم التقاط أو `_`؛
+  أول حالة تطابق (مع شرط `لو` إن وُجد) هي اللي بتتنفّذ، ولو مفيش تطابق
+  ومفيش `غير كده` مفيش حاجة بتتنفّذ.
 
 ### 5.7 القوائم والقواميس
 
@@ -226,7 +236,7 @@ primary     = NUMBER | STRING | "صح" | "غلط" | "فراغ" | IDENT
 
 ## 11. حدود معروفة (خارج المواصفة)
 
-مفيش: وراثة متعددة، وراثة واجهات/default methods، pattern matching، generics،
+مفيش: وراثة متعددة، وراثة واجهات/default methods، generics،
 `ثابت`، sets/tuples، شرائح، interpolation، async/await،
 playground، سجلّ حزم على الإنترنت، Python interop، IR،
 optimizer. والمنسّق (`arabic format`) بيوحّد المسافات بس، وعزل التنفيذ

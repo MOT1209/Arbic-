@@ -71,6 +71,9 @@ class TokenType(Enum):
     KW_THROW = "ارم"
     KW_DECORATOR = "مزخرف"
     KW_YIELD = "انتج"
+    KW_WITH = "استخدم"
+    KW_MATCH = "طابق"
+    KW_CASE = "حالة"
 
     # --- operators ---
     PLUS = "+"

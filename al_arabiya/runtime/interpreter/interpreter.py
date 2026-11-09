@@ -32,6 +32,8 @@ from al_arabiya.compiler.ast.nodes import (
     ListLiteral,
     Literal,
     MapLiteral,
+    MatchCase,
+    MatchStatement,
     MemberAssignment,
     MemberExpression,
     MethodDeclaration,
@@ -47,6 +49,7 @@ from al_arabiya.compiler.ast.nodes import (
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    WithStatement,
     YieldStatement,
 )
 from al_arabiya.compiler.ast.visitor import ASTVisitor
@@ -93,6 +96,15 @@ def _body_has_yield(body: list[Statement]) -> bool:
                 return True
         elif isinstance(statement, (RepeatStatement, WhileStatement, ForEachStatement)):
             if _body_has_yield(statement.body):
+                return True
+        elif isinstance(statement, WithStatement):
+            if _body_has_yield(statement.body):
+                return True
+        elif isinstance(statement, MatchStatement):
+            for case in statement.cases:
+                if _body_has_yield(case.body):
+                    return True
+            if statement.else_body is not None and _body_has_yield(statement.else_body):
                 return True
         elif isinstance(statement, TryStatement):
             if _body_has_yield(statement.try_body):
@@ -310,6 +322,67 @@ class Interpreter(ASTVisitor):
             node.span,
             "'انتج' بيشتغل جوّه دالة عادية بس، مش جوّه طريقة صنف",
         )
+
+    def visit_with_statement(self, node: WithStatement) -> None:
+        enter, exit_method = self._context_methods(node.value)
+        entered = self._call_method(enter, [], node.value.span)
+        self.environment.define(node.name, entered)
+        try:
+            for statement in node.body:
+                self.visit(statement)
+        finally:
+            self._call_method(exit_method, [], node.span)
+
+    def _context_methods(
+        self, value: Expression
+    ) -> tuple[BoundMethod, BoundMethod]:
+        manager = self._eval(value)
+        if not isinstance(manager, InstanceValue):
+            raise self._control_error(
+                ErrorCode.INVALID_CONTEXT_MANAGER,
+                f"'{describe_value(manager)}' مينفعش يتستخدم كـ context manager",
+                value.span,
+                "لازم كائن صنف فيه '__دخول__' و'__خروج__'",
+            )
+        enter = self._context_method(manager, "__دخول__", value.span)
+        exit_method = self._context_method(manager, "__خروج__", value.span)
+        return enter, exit_method
+
+    def _context_method(
+        self, instance: InstanceValue, name: str, span: Span
+    ) -> BoundMethod:
+        resolved = instance.klass.resolve_instance_method(name)
+        if resolved is None or resolved[1].is_private:
+            raise self._control_error(
+                ErrorCode.INVALID_CONTEXT_MANAGER,
+                f"الكائن '{instance.class_name}' مفيهوش طريقة عامة '{name}'",
+                span,
+                f"ضيف 'دالة {name} () ... خلاص' جوّه الصنف",
+            )
+        declaring, method = resolved
+        return BoundMethod(instance, method, declaring)
+
+    def visit_match_statement(self, node: MatchStatement) -> None:
+        subject = self._eval(node.subject)
+        for case in node.cases:
+            if not self._case_matches(case, subject):
+                continue
+            if case.pattern.binding is not None:
+                self.environment.define(case.pattern.binding, subject)
+            for statement in case.body:
+                self.visit(statement)
+            return
+        if node.else_body is not None:
+            for statement in node.else_body:
+                self.visit(statement)
+
+    def _case_matches(self, case: MatchCase, subject: Value) -> bool:
+        if case.pattern.literal is not None:
+            if subject != self._eval(case.pattern.literal):
+                return False
+        if case.guard is not None and not is_truthy(self._eval(case.guard)):
+            return False
+        return True
 
     def visit_lambda_expression(self, node: LambdaExpression) -> Value:
         return LambdaFunction(node, self.environment)
@@ -1007,6 +1080,26 @@ class Interpreter(ASTVisitor):
                         continue
                     except _Break:
                         break
+            elif isinstance(statement, WithStatement):
+                enter, exit_method = self._context_methods(statement.value)
+                entered = self._call_method(enter, [], statement.value.span)
+                self.environment.define(statement.name, entered)
+                try:
+                    yield from self._generator_statements(statement.body)
+                finally:
+                    self._call_method(exit_method, [], statement.span)
+            elif isinstance(statement, MatchStatement):
+                subject = self._eval(statement.subject)
+                for case in statement.cases:
+                    if not self._case_matches(case, subject):
+                        continue
+                    if case.pattern.binding is not None:
+                        self.environment.define(case.pattern.binding, subject)
+                    yield from self._generator_statements(case.body)
+                    break
+                else:
+                    if statement.else_body is not None:
+                        yield from self._generator_statements(statement.else_body)
             elif isinstance(statement, TryStatement):
                 try:
                     try:

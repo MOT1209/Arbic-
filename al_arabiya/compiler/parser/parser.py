@@ -33,6 +33,9 @@ from al_arabiya.compiler.ast.nodes import (
     ListLiteral,
     Literal,
     MapLiteral,
+    MatchCase,
+    MatchPattern,
+    MatchStatement,
     MemberAssignment,
     MemberExpression,
     MethodDeclaration,
@@ -49,6 +52,7 @@ from al_arabiya.compiler.ast.nodes import (
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    WithStatement,
     YieldStatement,
 )
 from al_arabiya.compiler.diagnostics.diagnostics import DiagnosticBag
@@ -530,6 +534,10 @@ class Parser:
             return self._parse_throw()
         if token_type is TokenType.KW_YIELD:
             return self._parse_yield()
+        if token_type is TokenType.KW_WITH:
+            return self._parse_with()
+        if token_type is TokenType.KW_MATCH:
+            return self._parse_match()
         if token_type is TokenType.KW_DECORATOR:
             return self._parse_decorated_function()
         if token_type is TokenType.IDENTIFIER and self._peek(1).type is TokenType.ASSIGN:
@@ -825,6 +833,128 @@ class Parser:
         end = self._prev.span.end
         self._end_statement()
         return YieldStatement(Span(keyword.span.start, end), value)
+
+    def _parse_with(self) -> WithStatement:
+        """``استخدم <expr> باسم <name> ... خلاص``."""
+        keyword = self._advance()
+        value = self.parse_expression()
+        self._expect(
+            TokenType.KW_AS,
+            ErrorCode.EXPECTED_TOKEN,
+            "بعد قيمة 'استخدم' لازم تكتب 'باسم' واسم للمتغيّر",
+            suggestion="مثال: استخدم ملف باسم م",
+        )
+        name_token = self._expect(
+            TokenType.IDENTIFIER,
+            ErrorCode.EXPECTED_IDENTIFIER,
+            "بعد 'باسم' لازم يجي اسم المتغيّر",
+            suggestion="مثال: استخدم ملف باسم م",
+        )
+        self._end_statement()
+        body = self._parse_block({TokenType.KW_END})
+        self._expect_block_end("'استخدم' لازم تتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        assert isinstance(name_token.value, str)
+        return WithStatement(
+            Span(keyword.span.start, end),
+            value,
+            name_token.value,
+            name_token.span,
+            body,
+        )
+
+    def _parse_match(self) -> MatchStatement:
+        """``طابق <expr>`` followed by ``حالة`` branches and optional ``غير كده``."""
+        keyword = self._advance()
+        subject = self.parse_expression()
+        self._end_statement()
+        cases: list[MatchCase] = []
+        self._skip_newlines()
+        while self._check(TokenType.KW_CASE):
+            case_token = self._advance()
+            pattern = self._parse_pattern()
+            guard: Expression | None = None
+            if self._match(TokenType.KW_IF):
+                guard = self.parse_expression()
+            self._end_statement()
+            body = self._parse_block(
+                {TokenType.KW_CASE, TokenType.KW_ELSE, TokenType.KW_END}
+            )
+            cases.append(
+                MatchCase(
+                    Span(case_token.span.start, self._prev.span.end),
+                    pattern,
+                    body,
+                    guard,
+                )
+            )
+            self._skip_newlines()
+        else_body: list[Statement] | None = None
+        if self._check(TokenType.KW_ELSE):
+            self._advance()
+            self._expect(
+                TokenType.KW_THAT,
+                ErrorCode.EXPECTED_TOKEN,
+                "بعد 'غير' لازم تكتب 'كده'",
+                suggestion="اكتب: غير كده",
+            )
+            self._end_statement()
+            else_body = self._parse_block({TokenType.KW_END})
+        if not cases and else_body is None:
+            raise self._make_error(
+                self._peek(),
+                ErrorCode.UNEXPECTED_TOKEN,
+                "'طابق' محتاج حالة واحدة على الأقل ('حالة ...' أو 'غير كده')",
+                suggestion="مثال: طابق س ثم حالة 1 ثم اطبع...",
+            )
+        self._expect_block_end("'طابق' لازم يتقفل بكلمة 'خلاص'")
+        end = self._prev.span.end
+        self._end_statement()
+        return MatchStatement(
+            Span(keyword.span.start, end), subject, cases, else_body
+        )
+
+    def _parse_pattern(self) -> MatchPattern:
+        """A literal pattern, a binding name, or ``_`` (wildcard, no binding)."""
+        token = self._peek()
+        if token.type is TokenType.MINUS and self._peek(1).type is TokenType.NUMBER:
+            self._advance()
+            number = self._advance()
+            span = Span(token.span.start, number.span.end)
+            assert isinstance(number.value, (int, float)) and not isinstance(
+                number.value, bool
+            )
+            return MatchPattern(span, literal=Literal(span, -number.value))
+        if token.type is TokenType.NUMBER:
+            self._advance()
+            assert isinstance(token.value, (int, float))
+            return MatchPattern(token.span, literal=Literal(token.span, token.value))
+        if token.type is TokenType.STRING:
+            self._advance()
+            assert isinstance(token.value, str)
+            return MatchPattern(token.span, literal=Literal(token.span, token.value))
+        if token.type in (TokenType.KW_TRUE, TokenType.KW_FALSE):
+            self._advance()
+            value = token.type is TokenType.KW_TRUE
+            return MatchPattern(token.span, literal=Literal(token.span, value))
+        if token.type is TokenType.KW_NULL:
+            self._advance()
+            return MatchPattern(token.span, literal=NullLiteral(token.span))
+        if token.type is TokenType.IDENTIFIER:
+            self._advance()
+            assert isinstance(token.value, str)
+            if token.value == "_":
+                return MatchPattern(token.span)
+            return MatchPattern(
+                token.span, binding=token.value, binding_span=token.span
+            )
+        raise self._make_error(
+            token,
+            ErrorCode.UNEXPECTED_TOKEN,
+            "بعد 'حالة' لازم نمط: رقم أو نص أو صح/غلط/فراغ أو اسم متغيّر",
+            suggestion="مثال: حالة 1 أو حالة اسم أو حالة _",
+        )
 
     def _parse_function(self) -> FunctionDeclaration:
         keyword = self._advance()

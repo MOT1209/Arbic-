@@ -32,6 +32,7 @@ from al_arabiya.compiler.ast.nodes import (
     ListLiteral,
     Literal,
     MapLiteral,
+    MatchStatement,
     MemberAssignment,
     MemberExpression,
     NullLiteral,
@@ -45,6 +46,7 @@ from al_arabiya.compiler.ast.nodes import (
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    WithStatement,
     YieldStatement,
 )
 from al_arabiya.compiler.lexer.positions import Span
@@ -106,6 +108,10 @@ def _unsupported(node: ASTNode) -> str | None:
         return "'دالة مجهولة' (lambda) لسه مش مدعومة على الـ VM"
     if isinstance(node, YieldStatement):
         return "'انتج' (المولّدات) لسه مش مدعوم على الـ VM"
+    if isinstance(node, WithStatement):
+        return "'استخدم' (context managers) لسه مش مدعوم على الـ VM"
+    if isinstance(node, MatchStatement):
+        return "'طابق' (pattern matching) لسه مش مدعوم على الـ VM"
     if isinstance(node, FunctionDeclaration) and node.decorators:
         return "'مزخرف' لسه مش مدعوم على الـ VM"
     if isinstance(node, TryStatement) and _try_has_escaping_jump(node):

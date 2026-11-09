@@ -34,6 +34,9 @@ __all__ = [
     "ListLiteral",
     "Literal",
     "MapLiteral",
+    "MatchCase",
+    "MatchPattern",
+    "MatchStatement",
     "MemberAssignment",
     "MemberExpression",
     "MethodDeclaration",
@@ -50,6 +53,7 @@ __all__ = [
     "UnaryExpression",
     "VariableDeclaration",
     "WhileStatement",
+    "WithStatement",
     "YieldStatement",
 ]
 
@@ -285,6 +289,43 @@ class YieldStatement(Statement):
     """``انتج <expr>`` — produce one value from a generator function."""
 
     value: Expression
+
+
+@dataclass(slots=True)
+class WithStatement(Statement):
+    """``استخدم <expr> باسم <name> ... خلاص`` — a context manager block."""
+
+    value: Expression
+    name: str
+    name_span: Span
+    body: list[Statement]
+
+
+@dataclass(slots=True)
+class MatchPattern(ASTNode):
+    """One ``حالة`` pattern: a literal, a binding name, or ``_``."""
+
+    literal: Expression | None = None
+    binding: str | None = None
+    binding_span: Span | None = None
+
+
+@dataclass(slots=True)
+class MatchCase(ASTNode):
+    """``حالة <pattern> [لو <guard>] ...`` inside a ``طابق`` block."""
+
+    pattern: MatchPattern
+    body: list[Statement]
+    guard: Expression | None = None
+
+
+@dataclass(slots=True)
+class MatchStatement(Statement):
+    """``طابق <expr> ... حالة ... [غير كده ...] خلاص``."""
+
+    subject: Expression
+    cases: list[MatchCase]
+    else_body: list[Statement] | None = None
 
 
 @dataclass(slots=True)

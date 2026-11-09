@@ -30,6 +30,7 @@ from al_arabiya.compiler.ast.nodes import (
     ListLiteral,
     Literal,
     MapLiteral,
+    MatchStatement,
     MemberAssignment,
     MemberExpression,
     MethodDeclaration,
@@ -45,6 +46,7 @@ from al_arabiya.compiler.ast.nodes import (
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
+    WithStatement,
     YieldStatement,
 )
 from al_arabiya.compiler.diagnostics.diagnostics import DiagnosticBag
@@ -183,6 +185,25 @@ class TypeChecker:
         elif isinstance(node, MemberAssignment):
             self._infer(node.target)
             self._infer(node.value)
+        elif isinstance(node, WithStatement):
+            self._infer(node.value)
+            self._scopes.append({node.name: T_ANY})
+            self._check_block(node.body)
+            self._scopes.pop()
+        elif isinstance(node, MatchStatement):
+            self._infer(node.subject)
+            for case in node.cases:
+                if case.pattern.literal is not None:
+                    self._infer(case.pattern.literal)
+                if case.guard is not None:
+                    self._infer(case.guard)
+                self._scopes.append({})
+                if case.pattern.binding is not None:
+                    self._define(case.pattern.binding, T_ANY)
+                self._check_block(case.body)
+                self._scopes.pop()
+            if node.else_body is not None:
+                self._check_block(node.else_body)
         elif isinstance(node, TryStatement):
             self._check_block(node.try_body)
             if node.catch_body is not None:

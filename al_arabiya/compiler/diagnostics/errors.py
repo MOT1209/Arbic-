@@ -84,6 +84,7 @@ class ErrorCode(StrEnum):
     INVALID_INTERFACE = "E4024"
     MISSING_INTERFACE_MEMBER = "E4025"
     YIELD_OUTSIDE_GENERATOR = "E4026"
+    INVALID_CONTEXT_MANAGER = "E4027"
 
 
 class AlArabiyaError(Exception):
